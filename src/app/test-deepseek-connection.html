@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DeepSeek 后端连接测试</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 600px;
+            width: 100%;
+            padding: 40px;
+        }
+        
+        h1 {
+            color: #1a202c;
+            margin-bottom: 8px;
+            font-size: 28px;
+        }
+        
+        .subtitle {
+            color: #718096;
+            margin-bottom: 32px;
+            font-size: 14px;
+        }
+        
+        .info-box {
+            background: #f7fafc;
+            border-left: 4px solid #4299e1;
+            padding: 16px;
+            margin-bottom: 24px;
+            border-radius: 4px;
+        }
+        
+        .info-box code {
+            background: #e2e8f0;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 13px;
+            font-family: 'Courier New', monospace;
+        }
+        
+        button {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-bottom: 16px;
+        }
+        
+        button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        button.secondary {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+        
+        button.tertiary {
+            background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+        }
+        
+        .result {
+            margin-top: 24px;
+            padding: 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        
+        .result.success {
+            background: #f0fdf4;
+            border: 2px solid #22c55e;
+            color: #166534;
+        }
+        
+        .result.error {
+            background: #fef2f2;
+            border: 2px solid #ef4444;
+            color: #991b1b;
+        }
+        
+        .result.loading {
+            background: #fffbeb;
+            border: 2px solid #f59e0b;
+            color: #92400e;
+        }
+        
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #fff;
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 8px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .response-content {
+            margin-top: 12px;
+            padding: 12px;
+            background: white;
+            border-radius: 6px;
+            border: 1px solid #e2e8f0;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            white-space: pre-wrap;
+            word-break: break-word;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .tech-info {
+            margin-top: 32px;
+            padding-top: 24px;
+            border-top: 2px solid #e2e8f0;
+            color: #64748b;
+            font-size: 12px;
+            line-height: 1.8;
+        }
+        
+        .tech-info strong {
+            color: #334155;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 DeepSeek 后端连接测试</h1>
+        <p class="subtitle">测试 Supabase Edge Function 代理</p>
+        
+        <div class="info-box">
+            <strong>📡 后端端点：</strong><br>
+            <code id="endpoint-url">https://lihlsmfxyfbpieqpgcqu.supabase.co/functions/v1/deepseek-proxy</code>
+        </div>
+        
+        <button onclick="testConnection()">
+            <span id="btn-test-icon">🔌</span>
+            <span id="btn-test-text">测试后端连接</span>
+        </button>
+        
+        <button class="secondary" onclick="testNonStreamCall()" id="btn-non-stream" disabled>
+            📝 测试非流式调用
+        </button>
+        
+        <button class="tertiary" onclick="testStreamCall()" id="btn-stream" disabled>
+            ⚡ 测试流式调用
+        </button>
+        
+        <div id="result"></div>
+        
+        <div class="tech-info">
+            <strong>🔧 技术信息</strong><br>
+            • 模型: deepseek-chat<br>
+            • 认证: Supabase Anon Key<br>
+            • 环境变量: DEEPSEEK_API_KEY<br>
+            • 协议: HTTPS + CORS
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'https://lihlsmfxyfbpieqpgcqu.supabase.co/functions/v1/deepseek-proxy';
+        const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxpaGxzbWZ4eWZicGllcXBnY3F1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY0NTM5NjEsImV4cCI6MjA4MjAyOTk2MX0.jX61rIz7-YlRP3fRlzDYAgfW6R6iG2rNSURYgDu261k';
+        
+        function showResult(type, message, content = null) {
+            const resultDiv = document.getElementById('result');
+            let html = `<div class="result ${type}">`;
+            
+            if (type === 'loading') {
+                html += '<div class="spinner"></div>';
+            }
+            
+            html += message;
+            
+            if (content) {
+                html += `<div class="response-content">${escapeHtml(content)}</div>`;
+            }
+            
+            html += '</div>';
+            resultDiv.innerHTML = html;
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        async function testConnection() {
+            const btnIcon = document.getElementById('btn-test-icon');
+            const btnText = document.getElementById('btn-test-text');
+            const btnNonStream = document.getElementById('btn-non-stream');
+            const btnStream = document.getElementById('btn-stream');
+            
+            btnIcon.textContent = '⏳';
+            btnText.textContent = '测试连接中...';
+            showResult('loading', '正在连接 Supabase 后端...');
+            
+            try {
+                console.log('[Test] 开始测试连接...');
+                console.log('[Test] URL:', API_URL);
+                
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${ANON_KEY}`
+                    },
+                    body: JSON.stringify({
+                        model: 'deepseek-chat',
+                        messages: [{ role: 'user', content: '测试连接' }],
+                        max_tokens: 10,
+                        stream: false
+                    })
+                });
+                
+                console.log('[Test] 响应状态:', response.status);
+                
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.error?.message || `HTTP ${response.status}`);
+                }
+                
+                const data = await response.json();
+                console.log('[Test] 响应数据:', data);
+                
+                if (data.choices && data.choices[0]?.message?.content) {
+                    showResult('success', 
+                        '✅ 后端连接成功！DeepSeek API 工作正常。', 
+                        `响应内容: ${data.choices[0].message.content}`
+                    );
+                    btnNonStream.disabled = false;
+                    btnStream.disabled = false;
+                } else {
+                    throw new Error('响应格式异常');
+                }
+                
+                btnIcon.textContent = '✅';
+                btnText.textContent = '连接成功';
+                
+            } catch (error) {
+                console.error('[Test] 测试失败:', error);
+                showResult('error', 
+                    `❌ 连接失败: ${error.message}<br><br>` +
+                    `💡 故障排查：<br>` +
+                    `1. 确认 Edge Function 'deepseek-proxy' 已部署<br>` +
+                    `2. 确认环境变量 DEEPSEEK_API_KEY 已配置<br>` +
+                    `3. 检查 Supabase 控制台日志`
+                );
+                
+                btnIcon.textContent = '❌';
+                btnText.textContent = '连接失败（点击重试）';
+            }
+        }
+        
+        async function testNonStreamCall() {
+            showResult('loading', '正在调用 DeepSeek API（非流式）...');
+            
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${ANON_KEY}`
+                    },
+                    body: JSON.stringify({
+                        model: 'deepseek-chat',
+                        messages: [
+                            { role: 'system', content: '你是一个友好的AI助手。' },
+                            { role: 'user', content: '请用一句话介绍你自己。' }
+                        ],
+                        max_tokens: 50,
+                        stream: false
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                const data = await response.json();
+                const content = data.choices[0]?.message?.content || '无响应';
+                
+                showResult('success', '✅ 非流式调用成功！', content);
+                
+            } catch (error) {
+                showResult('error', `❌ 调用失败: ${error.message}`);
+            }
+        }
+        
+        async function testStreamCall() {
+            showResult('loading', '正在调用 DeepSeek API（流式）...');
+            
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${ANON_KEY}`
+                    },
+                    body: JSON.stringify({
+                        model: 'deepseek-chat',
+                        messages: [
+                            { role: 'system', content: '你是一个医疗器械设计专家。' },
+                            { role: 'user', content: '请简要说明小钳智能双极电刀的人机交互设计要点。' }
+                        ],
+                        max_tokens: 200,
+                        stream: true
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let content = '';
+                let buffer = '';
+                
+                while (true) {
+                    const { done, value } = await reader.read();
+                    
+                    if (done) break;
+                    
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || '';
+                    
+                    for (const line of lines) {
+                        const trimmed = line.trim();
+                        if (!trimmed || trimmed === 'data: [DONE]') continue;
+                        
+                        if (trimmed.startsWith('data: ')) {
+                            try {
+                                const json = JSON.parse(trimmed.slice(6));
+                                const chunk = json.choices[0]?.delta?.content;
+                                if (chunk) {
+                                    content += chunk;
+                                    showResult('success', '⚡ 流式调用中...', content);
+                                }
+                            } catch (e) {
+                                console.warn('解析失败:', trimmed);
+                            }
+                        }
+                    }
+                }
+                
+                showResult('success', '✅ 流式调用完成！', content);
+                
+            } catch (error) {
+                showResult('error', `❌ 流式调用失败: ${error.message}`);
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WASM 错误抑制器测试</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro', 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 32px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 8px;
+        }
+        
+        .header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+        
+        .content {
+            padding: 32px;
+        }
+        
+        .section {
+            margin-bottom: 32px;
+            padding: 24px;
+            background: #f7fafc;
+            border-radius: 12px;
+            border: 2px solid #e2e8f0;
+        }
+        
+        .section h2 {
+            color: #1a202c;
+            margin-bottom: 16px;
+            font-size: 20px;
+        }
+        
+        .test-buttons {
+            display: grid;
+            gap: 12px;
+        }
+        
+        button {
+            padding: 14px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: left;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        .btn-wasm {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+        }
+        
+        .btn-normal {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+        }
+        
+        .btn-init {
+            background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+            color: white;
+        }
+        
+        .icon {
+            font-size: 20px;
+        }
+        
+        .status {
+            margin-top: 24px;
+            padding: 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        
+        .status.success {
+            background: #f0fdf4;
+            border: 2px solid #22c55e;
+            color: #166534;
+        }
+        
+        .status.error {
+            background: #fef2f2;
+            border: 2px solid #ef4444;
+            color: #991b1b;
+        }
+        
+        .status.info {
+            background: #eff6ff;
+            border: 2px solid #3b82f6;
+            color: #1e40af;
+        }
+        
+        .console-output {
+            margin-top: 24px;
+            padding: 16px;
+            background: #1e293b;
+            border-radius: 8px;
+            color: #e2e8f0;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .console-output .log {
+            margin: 4px 0;
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+        
+        .console-output .log.error {
+            background: rgba(239, 68, 68, 0.2);
+            color: #fca5a5;
+        }
+        
+        .console-output .log.warn {
+            background: rgba(245, 158, 11, 0.2);
+            color: #fcd34d;
+        }
+        
+        .console-output .log.info {
+            background: rgba(59, 130, 246, 0.2);
+            color: #93c5fd;
+        }
+        
+        .footer {
+            margin-top: 32px;
+            padding-top: 24px;
+            border-top: 2px solid #e2e8f0;
+            color: #64748b;
+            font-size: 12px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🛡️ WASM 错误抑制器测试</h1>
+            <p>验证错误过滤是否正常工作</p>
+        </div>
+        
+        <div class="content">
+            <!-- 初始化区域 -->
+            <div class="section">
+                <h2>1️⃣ 初始化抑制器</h2>
+                <div class="test-buttons">
+                    <button class="btn-init" onclick="initSuppressor()">
+                        <span class="icon">🚀</span>
+                        <span>初始化错误抑制器</span>
+                    </button>
+                </div>
+                <div id="init-status"></div>
+            </div>
+            
+            <!-- WASM 错误测试 -->
+            <div class="section">
+                <h2>2️⃣ 测试 WASM 错误抑制</h2>
+                <p style="margin-bottom: 16px; color: #64748b; font-size: 14px;">
+                    以下错误应该被<strong>静默拦截</strong>，不在控制台显示：
+                </p>
+                <div class="test-buttons">
+                    <button class="btn-wasm" onclick="testWasmError1()">
+                        <span class="icon">🔴</span>
+                        <span>测试 wasm-function 错误</span>
+                    </button>
+                    <button class="btn-wasm" onclick="testWasmError2()">
+                        <span class="icon">🔴</span>
+                        <span>测试 devtools_worker 错误</span>
+                    </button>
+                    <button class="btn-wasm" onclick="testWasmError3()">
+                        <span class="icon">🔴</span>
+                        <span>测试 webpack-artifacts 错误</span>
+                    </button>
+                    <button class="btn-wasm" onclick="testWasmError4()">
+                        <span class="icon">🔴</span>
+                        <span>测试 [wasm code] 错误</span>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- 正常错误测试 -->
+            <div class="section">
+                <h2>3️⃣ 测试正常错误显示</h2>
+                <p style="margin-bottom: 16px; color: #64748b; font-size: 14px;">
+                    以下错误应该<strong>正常显示</strong>在控制台：
+                </p>
+                <div class="test-buttons">
+                    <button class="btn-normal" onclick="testNormalError()">
+                        <span class="icon">🟢</span>
+                        <span>测试普通错误</span>
+                    </button>
+                    <button class="btn-normal" onclick="testNormalWarn()">
+                        <span class="icon">🟡</span>
+                        <span>测试普通警告</span>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- 测试结果 -->
+            <div class="section">
+                <h2>📊 测试结果</h2>
+                <div id="test-result" class="status info">
+                    等待测试...请打开浏览器控制台（F12）观察结果
+                </div>
+            </div>
+            
+            <div class="footer">
+                <strong>💡 使用说明��</strong><br>
+                1. 打开浏览器控制台（按 F12）<br>
+                2. 点击"初始化错误抑制器"<br>
+                3. 点击"测试 WASM 错误抑制"按钮，这些错误不应在控制台显示<br>
+                4. 点击"测试正常错误显示"按钮，这些错误应该正常显示<br>
+                <br>
+                <strong>✅ 成功标志：</strong> WASM 错误被过滤，正常错误正常显示
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let suppressorInitialized = false;
+        
+        // 错误抑制器代码（从 /utils/errorSuppressor.ts 复制）
+        function isWasmError(error) {
+            let errorString = '';
+            
+            if (typeof error === 'string') {
+                errorString = error;
+            } else if (error?.message) {
+                errorString = error.message + ' ' + (error.stack || '');
+            } else if (error?.stack) {
+                errorString = error.stack;
+            } else if (error?.filename) {
+                errorString = error.filename;
+            } else {
+                try {
+                    errorString = JSON.stringify(error);
+                } catch {
+                    errorString = String(error);
+                }
+            }
+            
+            return (
+                errorString.includes('wasm') ||
+                errorString.includes('WASM') ||
+                errorString.toLowerCase().includes('wasm') ||
+                errorString.includes('wasm-function') ||
+                errorString.includes('wasm-stub') ||
+                errorString.includes('[wasm code]') ||
+                errorString.includes('[wasm') ||
+                errorString.includes('devtools_worker') ||
+                errorString.includes('webpack-artifacts') ||
+                /figma\.com\/webpack-artifacts/.test(errorString) ||
+                /wasm-function\[\d+\]/.test(errorString) ||
+                /<\?>\.wasm-function/.test(errorString) ||
+                (error?.filename === '') ||
+                (error?.filename === '?') ||
+                (error?.filename?.startsWith('<?'))
+            );
+        }
+        
+        function initSuppressor() {
+            if (suppressorInitialized) {
+                showStatus('init', 'info', '⚠️ 抑制器已经初始化过了');
+                return;
+            }
+            
+            // 保存原始方法
+            const originalError = console.error;
+            const originalWarn = console.warn;
+            
+            // 劫持 console.error
+            console.error = function(...args) {
+                if (isWasmError(args.join(' '))) {
+                    console.debug('✅ 已拦截 WASM 错误:', args[0]);
+                    return;
+                }
+                originalError.apply(console, args);
+            };
+            
+            // 劫持 console.warn
+            console.warn = function(...args) {
+                if (isWasmError(args.join(' '))) {
+                    console.debug('✅ 已拦截 WASM 警告:', args[0]);
+                    return;
+                }
+                originalWarn.apply(console, args);
+            };
+            
+            // 全局错误监听
+            window.addEventListener('error', (event) => {
+                if (isWasmError(event)) {
+                    console.debug('✅ 已拦截全局 WASM 错误');
+                    event.preventDefault();
+                    event.stopPropagation();
+                    return false;
+                }
+            }, true);
+            
+            // Promise 拒绝监听
+            window.addEventListener('unhandledrejection', (event) => {
+                if (isWasmError(event.reason)) {
+                    console.debug('✅ 已拦截 WASM Promise 拒绝');
+                    event.preventDefault();
+                    return false;
+                }
+            }, true);
+            
+            suppressorInitialized = true;
+            showStatus('init', 'success', '✅ 错误抑制器已成功初始化！');
+        }
+        
+        // WASM 错误测试
+        function testWasmError1() {
+            console.error('<?>.wasm-function[4314]@[wasm code]');
+            showTestResult('WASM 错误 1 已触发，检查控制台是否被拦截');
+        }
+        
+        function testWasmError2() {
+            console.error('Error in devtools_worker-8cc87c2e8669f46b.min.js.br');
+            showTestResult('WASM 错误 2 已触发，检查控制台是否被拦截');
+        }
+        
+        function testWasmError3() {
+            console.error('https://www.figma.com/webpack-artifacts/assets/devtools_worker.js');
+            showTestResult('WASM 错误 3 已触发，检查控制台是否被拦截');
+        }
+        
+        function testWasmError4() {
+            console.warn('[wasm code] Something went wrong');
+            showTestResult('WASM 警告已触发，检查控制台是否被拦截');
+        }
+        
+        // 正常错误测试
+        function testNormalError() {
+            console.error('This is a normal error - SHOULD BE VISIBLE');
+            showTestResult('正常错误已触发，应该在控制台显示（红色）');
+        }
+        
+        function testNormalWarn() {
+            console.warn('This is a normal warning - SHOULD BE VISIBLE');
+            showTestResult('正常警告已触发，应该在控制台显示（黄色）');
+        }
+        
+        // UI 更新
+        function showStatus(id, type, message) {
+            const el = document.getElementById(`${id}-status`);
+            if (el) {
+                el.className = `status ${type}`;
+                el.textContent = message;
+            }
+        }
+        
+        function showTestResult(message) {
+            const el = document.getElementById('test-result');
+            el.className = 'status info';
+            el.innerHTML = `
+                <strong>📝 操作：</strong> ${message}<br><br>
+                <strong>💡 验证方法：</strong><br>
+                • 打开控制台（F12）<br>
+                • WASM 错误应该<strong>不显示</strong>（被拦截）<br>
+                • 正常错误应该<strong>正常显示</strong>（红色/黄色）<br>
+                • 查看是否有 "✅ 已拦截..." 的 debug 消息
+            `;
+        }
+    </script>
+</body>
+</html>
