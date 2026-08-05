@@ -35,9 +35,14 @@ async function tripoFetch(path: string, method = "GET", body?: unknown) {
 }
 
 // Tripo 统一返回 { code, message, data }；code !== 0 视为业务错误
+class TripoError extends Error {
+  constructor(message: string, public rawJson: any) {
+    super(message);
+  }
+}
 function unwrap(json: any) {
   if (json && typeof json === "object" && "code" in json) {
-    if (json.code !== 0) throw new Error(json.message || "tripo business error");
+    if (json.code !== 0) throw new TripoError(json.message || "tripo business error", json);
     return json.data;
   }
   return json;
@@ -82,7 +87,7 @@ app.get("*", async (c) => {
         raw: data,
       });
     } catch (e: any) {
-      return c.json({ ok: false, error: e.message }, 400);
+      return c.json({ ok: false, error: e.message, tripDetail: e.rawJson || undefined }, 400);
     }
   }
 
@@ -165,7 +170,7 @@ app.post("*", async (c) => {
     if (!taskId) return c.json({ ok: false, error: "no task_id in response", raw: data }, 502);
     return c.json({ ok: true, taskId, raw: data });
   } catch (e: any) {
-    return c.json({ ok: false, error: e.message }, 400);
+    return c.json({ ok: false, error: e.message, tripDetail: e.rawJson || undefined }, 400);
   }
 });
 

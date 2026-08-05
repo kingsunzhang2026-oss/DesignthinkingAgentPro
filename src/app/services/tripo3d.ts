@@ -7,9 +7,16 @@
  *
  * 注意：所有 Tripo API Key 都在服务端（Edge Function）持有，前端只调代理。
  */
-import { projectId } from '../utils/supabase/info';
+import { projectId, publicAnonKey } from '../utils/supabase/info';
 
 const FN_BASE = `https://${projectId}.supabase.co/functions/v1/tripo3d-proxy`;
+
+function authHeaders(): HeadersInit {
+  return {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${publicAnonKey}`,
+  };
+}
 
 export type TripoMode = 'text_to_model' | 'image_to_model' | 'multiview_to_model';
 export type TripoTier = 'H' | 'P';
@@ -32,14 +39,19 @@ export async function generateModel(opts: {
   tier: TripoTier;
   prompt?: string;
   imageUrls?: string[];
-}): Promise<string> {
+}, retry = 1): Promise<string> {
   const res = await fetch(`${FN_BASE}/generate`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders(),
     body: JSON.stringify(opts),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.ok) {
+    const isRetryable = res.status >= 500 || (data.error || '').includes('server side');
+    if (isRetryable && retry > 0) {
+      await new Promise((r) => setTimeout(r, 1500));
+      return generateModel(opts, retry - 1);
+    }
     throw new Error('Tripo 生成提交失败: ' + (data.error || res.status));
   }
   if (!data.taskId) {
@@ -52,7 +64,9 @@ export async function generateModel(opts: {
  * 查询单个任务状态
  */
 export async function getTaskStatus(taskId: string): Promise<TaskStatus> {
-  const res = await fetch(`${FN_BASE}/task?taskId=${encodeURIComponent(taskId)}`);
+  const res = await fetch(`${FN_BASE}/task?taskId=${encodeURIComponent(taskId)}`, {
+    headers: authHeaders(),
+  });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.ok) {
     throw new Error('查询任务失败: ' + (data.error || res.status));
@@ -93,7 +107,7 @@ export async function pollUntilDone(
  */
 export async function fetchGlbArrayBuffer(modelUrl: string): Promise<ArrayBuffer> {
   const proxied = getProxiedUrl(modelUrl);
-  const res = await fetch(proxied);
+  const res = await fetch(proxied, { headers: authHeaders() });
   if (!res.ok) throw new Error('GLB 下载失败: ' + res.status);
   return await res.arrayBuffer();
 }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Upload, X, File, Box, Image as ImageIcon, Loader2, Sparkles, Trash2, Download, Eye } from 'lucide-react';
+import { Upload, X, File, Box, Image as ImageIcon, Loader2, Sparkles, Trash2, Download, Eye, AlertCircle } from 'lucide-react';
 import { ModelViewer } from '../ModelViewer';
 import {
   generateModel,
@@ -36,7 +36,7 @@ const VIEW_LABEL: Record<string, string> = { front: '前', back: '后', left: '�
 function assetTypeLabel(t: AssetType): { text: string; cls: string } {
   switch (t) {
     case 'generated_glb':
-      return { text: 'AI 生成', cls: 'bg-purple-100 text-purple-700' };
+      return { text: 'AI 生成', cls: 'bg-orange-100 text-[#CC7700]' };
     case 'uploaded_glb':
       return { text: 'GLB 模型', cls: 'bg-blue-100 text-blue-700' };
     case 'reference_image':
@@ -75,6 +75,7 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
   const [generating, setGenerating] = useState(false);
   const [genStatusText, setGenStatusText] = useState('');
   const [genProgress, setGenProgress] = useState<number | null>(null);
+  const [genError, setGenError] = useState<string>('');
 
   // ---- 资产上传 ----
   const [uploading, setUploading] = useState(false);
@@ -112,6 +113,7 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
     setGenerating(true);
     setGenStatusText('提交生成任务…');
     setGenProgress(null);
+    setGenError('');
     try {
       let imageUrls: string[] | undefined;
       if (genMode === 'image_to_model') {
@@ -159,7 +161,8 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
       setGenStatusText('生成完成 ✅');
     } catch (e: any) {
       console.error(e);
-      alert('生成失败：' + (e?.message || e));
+      const msg = e?.message || String(e);
+      setGenError(msg);
       setGenStatusText('生成失败');
     } finally {
       setGenerating(false);
@@ -245,9 +248,9 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
       </div>
 
       {/* ===== Tripo3D 生成 ===== */}
-      <div className="border border-purple-200 rounded-lg p-4 bg-purple-50/40">
+      <div className="border border-orange-200 rounded-lg p-4 bg-orange-50/40">
         <div className="flex items-center gap-2 mb-3">
-          <Sparkles className="w-4 h-4 text-purple-600" />
+          <Sparkles className="w-4 h-4 text-[#FF9500]" />
           <h4 className="text-sm text-gray-800">Tripo3D AI 生成 3D 原型</h4>
         </div>
 
@@ -259,8 +262,8 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
               onClick={() => setGenMode(m.key)}
               className={`flex-1 px-2 py-2 rounded text-xs border transition-colors ${
                 genMode === m.key
-                  ? 'border-purple-500 bg-purple-500 text-white'
-                  : 'border-gray-200 bg-white text-gray-600 hover:border-purple-300'
+                  ? 'border-[#FF9500] bg-[#FF9500] text-white'
+                  : 'border-gray-200 bg-white text-gray-600 hover:border-orange-300'
               }`}
             >
               {m.label}
@@ -274,7 +277,7 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
           <button
             onClick={() => setTier('H')}
             className={`px-3 py-1 rounded text-xs border ${
-              tier === 'H' ? 'border-purple-500 bg-purple-50 text-purple-700' : 'border-gray-200 text-gray-500'
+              tier === 'H' ? 'border-[#FF9500] bg-orange-50 text-[#CC7700]' : 'border-gray-200 text-gray-500'
             }`}
           >
             H 高保真
@@ -282,7 +285,7 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
           <button
             onClick={() => setTier('P')}
             className={`px-3 py-1 rounded text-xs border ${
-              tier === 'P' ? 'border-purple-500 bg-purple-50 text-purple-700' : 'border-gray-200 text-gray-500'
+              tier === 'P' ? 'border-[#FF9500] bg-orange-50 text-[#CC7700]' : 'border-gray-200 text-gray-500'
             }`}
           >
             P 低多边形
@@ -295,7 +298,7 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             rows={3}
-            className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-purple-400"
+            className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-[#FFB84D]"
             placeholder="例如：小钳智能双极电刀 V2 的握把与钳头，符合人体工程学"
           />
         )}
@@ -303,7 +306,7 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
         {genMode === 'image_to_model' && (
           <div>
             <input type="file" accept="image/*" onChange={onSingleImageChange} className="hidden" id="single-img" />
-            <label htmlFor="single-img" className="flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 rounded-lg p-4 cursor-pointer hover:border-purple-400 text-gray-500 text-xs">
+            <label htmlFor="single-img" className="flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 rounded-lg p-4 cursor-pointer hover:border-[#FF9500] text-gray-500 text-xs">
               {singlePreview ? (
                 <img src={singlePreview} alt="ref" className="h-16 w-16 object-cover rounded" />
               ) : (
@@ -324,7 +327,7 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
                   className="hidden"
                   id={`mv-${v}`}
                 />
-                <label htmlFor={`mv-${v}`} className="flex flex-col items-center justify-center gap-1 border-2 border-dashed border-gray-300 rounded-lg p-2 cursor-pointer hover:border-purple-400 text-gray-500">
+                <label htmlFor={`mv-${v}`} className="flex flex-col items-center justify-center gap-1 border-2 border-dashed border-gray-300 rounded-lg p-2 cursor-pointer hover:border-[#FF9500] text-gray-500">
                   {multiviewPreviews[v] ? (
                     <img src={multiviewPreviews[v]} alt={v} className="h-12 w-12 object-cover rounded" />
                   ) : (
@@ -342,7 +345,7 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
           <button
             onClick={handleGenerate}
             disabled={generating}
-            className="flex-1 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white px-3 py-2 rounded text-sm flex items-center justify-center gap-2"
+            className="flex-1 bg-[#FF9500] hover:bg-[#E68600] disabled:opacity-50 text-white px-3 py-2 rounded text-sm flex items-center justify-center gap-2"
           >
             {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
             {generating ? '生成中…' : '开始生成'}
@@ -353,10 +356,16 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
             {genStatusText}
             {genProgress != null && (
               <span className="ml-2 inline-block w-full max-w-[120px] h-1.5 bg-gray-200 rounded overflow-hidden align-middle">
-                <span className="block h-full bg-purple-500" style={{ width: `${Math.round(genProgress * 100)}%` }} />
+                <span className="block h-full bg-[#FF9500]" style={{ width: `${Math.round(genProgress * 100)}%` }} />
               </span>
             )}
           </p>
+        )}
+        {genError && (
+          <div className="mt-2 text-xs text-red-600 bg-red-50 border border-red-100 rounded p-2 flex items-start gap-1.5">
+            <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+            <span className="break-all">{genError}</span>
+          </div>
         )}
         <p className="mt-1 text-[10px] text-gray-400">
           提示：STP/STEP 不能直接生成 3D，可作为原型存档；图生/多视图需先上传图片。生成消耗 Tripo 额度。
