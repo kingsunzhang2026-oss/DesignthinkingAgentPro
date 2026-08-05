@@ -139,20 +139,20 @@ const isWasmError =
 
 ### 1. 健康检查
 ```bash
-curl https://lihlsmfxyfbpieqpgcqu.supabase.co/functions/v1/make-server-f477e18e/health
+curl https://sgxkplfbptwdohjjnlzd.supabase.co/functions/v1/make-server-f477e18e/health
 # 预期输出: {"status":"ok"}
 ```
 
 ### 2. 测试 API 密钥
 ```bash
-curl https://lihlsmfxyfbpieqpgcqu.supabase.co/functions/v1/make-server-f477e18e/deepseek/test \
+curl https://sgxkplfbptwdohjjnlzd.supabase.co/functions/v1/make-server-f477e18e/deepseek/test \
   -H "Authorization: Bearer YOUR_SUPABASE_ANON_KEY"
 # 预期输出: {"valid":true} 或 {"valid":false,"error":"..."}
 ```
 
 ### 3. 非流式调用
 ```bash
-curl -X POST https://lihlsmfxyfbpieqpgcqu.supabase.co/functions/v1/make-server-f477e18e/deepseek/chat \
+curl -X POST https://sgxkplfbptwdohjjnlzd.supabase.co/functions/v1/make-server-f477e18e/deepseek/chat \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_SUPABASE_ANON_KEY" \
   -d '{

@@ -150,10 +150,10 @@
 
 ```bash
 # 1. 健康检查
-curl https://lihlsmfxyfbpieqpgcqu.supabase.co/functions/v1/make-server-f477e18e/health
+curl https://sgxkplfbptwdohjjnlzd.supabase.co/functions/v1/make-server-f477e18e/health
 
 # 2. 测试 API 密钥
-curl https://lihlsmfxyfbpieqpgcqu.supabase.co/functions/v1/make-server-f477e18e/deepseek/test \
+curl https://sgxkplfbptwdohjjnlzd.supabase.co/functions/v1/make-server-f477e18e/deepseek/test \
   -H "Authorization: Bearer YOUR_SUPABASE_ANON_KEY"
 ```
 
@@ -200,7 +200,7 @@ curl https://lihlsmfxyfbpieqpgcqu.supabase.co/functions/v1/make-server-f477e18e/
 
 - **详细迁移指南**: `/BACKEND_MIGRATION_GUIDE.md`
 - **API 密钥配置**: `/API_KEY_SETUP.md`
-- **Supabase 项目**: [Dashboard](https://supabase.com/dashboard/project/lihlsmfxyfbpieqpgcqu)
+- **Supabase 项目**: [Dashboard](https://supabase.com/dashboard/project/sgxkplfbptwdohjjnlzd)
 - **DeepSeek 平台**: [platform.deepseek.com](https://platform.deepseek.com)
 
 ## 🎉 下一步

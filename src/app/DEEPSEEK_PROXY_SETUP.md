@@ -4,7 +4,7 @@
 
 本应用使用 Supabase Edge Function 作为 DeepSeek API 的安全代理，避免前端直接调用 API 带来的 CORS 问题和安全风险。
 
-**后端 URL**: `https://lihlsmfxyfbpieqpgcqu.supabase.co/functions/v1/deepseek-proxy`
+**后端 URL**: `https://sgxkplfbptwdohjjnlzd.supabase.co/functions/v1/deepseek-proxy`
 
 ---
 
@@ -25,7 +25,7 @@
 ### 2.1 进入 Supabase Dashboard
 
 1. 打开 [Supabase Dashboard](https://supabase.com/dashboard)
-2. 选择项目: `lihlsmfxyfbpieqpgcqu`
+2. 选择项目: `sgxkplfbptwdohjjnlzd`
 
 ### 2.2 设置 Secret 环境变量
 
@@ -232,7 +232,7 @@ supabase functions logs deepseek-proxy
 
 ```
 [LLM Test] 通过后端测试 API 密钥...
-[LLM Test] 后端 URL: https://lihlsmfxyfbpieqpgcqu.supabase.co/functions/v1/deepseek-proxy
+[LLM Test] 后端 URL: https://sgxkplfbptwdohjjnlzd.supabase.co/functions/v1/deepseek-proxy
 [LLM Test] ✓ API密钥验证成功
 ```
 

@@ -19,7 +19,7 @@
 
 **完成项**:
 - ✅ 前端服务更新 (`/services/llm.ts`)
-- ✅ 使用 Supabase 转发 URL: `https://lihlsmfxyfbpieqpgcqu.supabase.co/functions/v1/deepseek-proxy`
+- ✅ 使用 Supabase 转发 URL: `https://sgxkplfbptwdohjjnlzd.supabase.co/functions/v1/deepseek-proxy`
 - ✅ 支持非流式和流式调用
 - ✅ 创建测试面板 (`/components/DeepSeekTestPanel.tsx`)
 - ✅ 集成到设置界面 (`/components/SettingsModal.tsx`)
@@ -109,7 +109,7 @@
 
 **方法 C - 浏览器控制台**:
 ```javascript
-fetch('https://lihlsmfxyfbpieqpgcqu.supabase.co/functions/v1/deepseek-proxy', {
+fetch('https://sgxkplfbptwdohjjnlzd.supabase.co/functions/v1/deepseek-proxy', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
@@ -139,7 +139,7 @@ fetch('https://lihlsmfxyfbpieqpgcqu.supabase.co/functions/v1/deepseek-proxy', {
 1. 访问 https://platform.deepseek.com
 2. 创建 API 密钥（格式：`sk-...`）
 3. 打开 https://supabase.com/dashboard
-4. 选择项目 `lihlsmfxyfbpieqpgcqu`
+4. 选择项目 `sgxkplfbptwdohjjnlzd`
 5. Settings → Edge Functions → Secrets
 6. 添加 Secret:
    - Name: `DEEPSEEK_API_KEY`

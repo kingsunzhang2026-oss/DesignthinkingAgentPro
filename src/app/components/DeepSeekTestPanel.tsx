@@ -129,7 +129,7 @@ export function DeepSeekTestPanel() {
             <div className="flex-1">
               <div className="text-sm text-green-900">{testResult}</div>
               <div className="text-xs text-green-700 mt-1">
-                后端 URL: <code className="bg-green-100 px-1 rounded">https://lihlsmfxyfbpieqpgcqu.supabase.co/functions/v1/deepseek-proxy</code>
+                后端 URL: <code className="bg-green-100 px-1 rounded">https://sgxkplfbptwdohjjnlzd.supabase.co/functions/v1/deepseek-proxy</code>
               </div>
             </div>
           </div>

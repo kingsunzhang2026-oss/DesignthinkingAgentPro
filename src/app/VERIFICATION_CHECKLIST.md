@@ -66,7 +66,7 @@ ls -la /components/DeepSeekTestPanel.tsx
 1. 访问 https://platform.deepseek.com
 2. 创建 API 密钥
 3. 打开 https://supabase.com/dashboard
-4. 项目: `lihlsmfxyfbpieqpgcqu`
+4. 项目: `sgxkplfbptwdohjjnlzd`
 5. Settings → Edge Functions → Secrets
 6. 添加: `DEEPSEEK_API_KEY` = `sk-你的密钥`
 
@@ -107,7 +107,7 @@ ls -la /components/DeepSeekTestPanel.tsx
 
 **控制台日志**:
 ```
-[LLM] 调用非流式 API: https://lihlsmfxyfbpieqpgcqu.supabase.co/functions/v1/deepseek-proxy
+[LLM] 调用非流式 API: https://sgxkplfbptwdohjjnlzd.supabase.co/functions/v1/deepseek-proxy
 [LLM] ✓ 调用成功
 ```
 
@@ -128,7 +128,7 @@ ls -la /components/DeepSeekTestPanel.tsx
 
 **控制台日志**:
 ```
-[LLM] 调用流式 API: https://lihlsmfxyfbpieqpgcqu.supabase.co/functions/v1/deepseek-proxy
+[LLM] 调用流式 API: https://sgxkplfbptwdohjjnlzd.supabase.co/functions/v1/deepseek-proxy
 [LLM] ✓ 流式调用完成
 ```
 
@@ -169,7 +169,7 @@ ls -la /components/DeepSeekTestPanel.tsx
 在浏览器控制台粘贴以下代码：
 
 ```javascript
-fetch('https://lihlsmfxyfbpieqpgcqu.supabase.co/functions/v1/deepseek-proxy', {
+fetch('https://sgxkplfbptwdohjjnlzd.supabase.co/functions/v1/deepseek-proxy', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',

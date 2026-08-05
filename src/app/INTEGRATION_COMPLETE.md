@@ -6,7 +6,7 @@
 
 **文件**: `/services/llm.ts`
 
-- ✅ 更新后端 URL 为: `https://lihlsmfxyfbpieqpgcqu.supabase.co/functions/v1/deepseek-proxy`
+- ✅ 更新后端 URL 为: `https://sgxkplfbptwdohjjnlzd.supabase.co/functions/v1/deepseek-proxy`
 - ✅ 实现非流式调用 (`callLLM`)
 - ✅ 实现流式调用 (`callLLMStream`)
 - ✅ 实现连接测试 (`testApiKey`)
@@ -93,7 +93,7 @@
 ```javascript
 // 打开浏览器控制台（F12），粘贴以下代码：
 
-const API_URL = 'https://lihlsmfxyfbpieqpgcqu.supabase.co/functions/v1/deepseek-proxy';
+const API_URL = 'https://sgxkplfbptwdohjjnlzd.supabase.co/functions/v1/deepseek-proxy';
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxpaGxzbWZ4eWZicGllcXBnY3F1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY0NTM5NjEsImV4cCI6MjA4MjAyOTk2MX0.jX61rIz7-YlRP3fRlzDYAgfW6R6iG2rNSURYgDu261k';
 
 fetch(API_URL, {
@@ -126,7 +126,7 @@ fetch(API_URL, {
    
 2. **在 Supabase 中设置环境变量**
    - 打开 [Supabase Dashboard](https://supabase.com/dashboard)
-   - 项目: `lihlsmfxyfbpieqpgcqu`
+   - 项目: `sgxkplfbptwdohjjnlzd`
    - 导航: Settings → Edge Functions → Secrets
    - 添加: `DEEPSEEK_API_KEY` = `sk-你的密钥`
 
@@ -172,7 +172,7 @@ fetch(API_URL, {
 4. **控制台日志**
    ```
    [LLM Test] 通过后端测试 API 密钥...
-   [LLM Test] 后端 URL: https://lihlsmfxyfbpieqpgcqu.supabase.co/functions/v1/deepseek-proxy
+   [LLM Test] 后端 URL: https://sgxkplfbptwdohjjnlzd.supabase.co/functions/v1/deepseek-proxy
    [LLM Test] ✓ API密钥验证成功
    ```
 

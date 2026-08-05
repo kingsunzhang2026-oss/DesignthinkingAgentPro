@@ -5,7 +5,7 @@
 ### 步骤 1: 配置环境变量（一次性）
 
 1. 打开 https://supabase.com/dashboard
-2. 选择项目 `lihlsmfxyfbpieqpgcqu`
+2. 选择项目 `sgxkplfbptwdohjjnlzd`
 3. Settings → Edge Functions → Secrets
 4. 添加 Secret:
    - Name: `DEEPSEEK_API_KEY`
@@ -58,7 +58,7 @@
 
 - DeepSeek 平台: https://platform.deepseek.com
 - Supabase Dashboard: https://supabase.com/dashboard
-- 后端 URL: `https://lihlsmfxyfbpieqpgcqu.supabase.co/functions/v1/deepseek-proxy`
+- 后端 URL: `https://sgxkplfbptwdohjjnlzd.supabase.co/functions/v1/deepseek-proxy`
 
 ---
 

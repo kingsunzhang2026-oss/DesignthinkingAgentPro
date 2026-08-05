@@ -45,8 +45,8 @@ supabase secrets set DEEPSEEK_API_KEY=sk-your-actual-api-key-here
 ## 📍 你的 Supabase 信息
 
 ```
-Project ID: lihlsmfxyfbpieqpgcqu
-Edge Function URL: https://lihlsmfxyfbpieqpgcqu.supabase.co/functions/v1/make-server-f477e18e
+Project ID: sgxkplfbptwdohjjnlzd
+Edge Function URL: https://sgxkplfbptwdohjjnlzd.supabase.co/functions/v1/make-server-f477e18e
 ```
 
 ## 🔍 故障排查
