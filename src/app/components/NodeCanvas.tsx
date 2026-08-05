@@ -379,9 +379,9 @@ export function NodeCanvas({
 
   // Calculate connection path
   const getConnectionPath = (fromNode: NodeData, toNode: NodeData) => {
-    const fromX = fromNode.position.x + 200;
+    const fromX = fromNode.position.x + 220;
     const fromY = fromNode.position.y + 60;
-    const toX = toNode.position.x + 20;
+    const toX = toNode.position.x;
     const toY = toNode.position.y + 60;
     
     const midX = (fromX + toX) / 2;
@@ -532,7 +532,7 @@ export function NodeCanvas({
           {connectingFrom && tempConnection && (() => {
             const fromNode = nodes.find(n => n.id === connectingFrom.nodeId);
             if (fromNode) {
-              const fromX = fromNode.position.x + 200;
+              const fromX = fromNode.position.x + 220;
               const fromY = fromNode.position.y + 60;
               const midX = (fromX + tempConnection.x) / 2;
               return (
@@ -549,33 +549,7 @@ export function NodeCanvas({
             return null;
           })()}
 
-          {/* Input/Output ports */}
-          {nodes.map((node) => (
-            <g key={node.id}>
-              {/* Output port (right side) */}
-              <circle
-                cx={node.position.x + 200}
-                cy={node.position.y + 60}
-                r="6"
-                fill={getNodeColor(node.type)}
-                stroke="white"
-                strokeWidth="2"
-                className="pointer-events-auto cursor-pointer hover:r-8 transition-all"
-                onMouseDown={(e) => handlePortMouseDown(e as any, node.id, 'output')}
-              />
-              {/* Input port (left side) */}
-              <circle
-                cx={node.position.x + 20}
-                cy={node.position.y + 60}
-                r="6"
-                fill={getNodeColor(node.type)}
-                stroke="white"
-                strokeWidth="2"
-                className="pointer-events-auto cursor-pointer hover:r-8 transition-all"
-                onMouseUp={(e) => handlePortMouseUp(e as any, node.id, 'input')}
-              />
-            </g>
-          ))}
+          {/* Input/Output ports 已移至节点卡片内部（见下方 nodes.map），避免被卡片遮挡不可点击 */}
         </svg>
 
         {/* Selection box */}
@@ -668,6 +642,20 @@ export function NodeCanvas({
                 )}
               </div>
             </div>
+
+            {/* 连接端口：放在卡片内部，确保可见可点击（不再被卡片遮挡） */}
+            <div
+              className="absolute w-3.5 h-3.5 rounded-full border-2 border-white shadow cursor-crosshair hover:scale-150 transition-transform z-10"
+              style={{ right: -7, top: 54, background: getNodeColor(node.type), pointerEvents: 'auto' }}
+              onMouseDown={(e) => { e.stopPropagation(); handlePortMouseDown(e, node.id, 'output'); }}
+              title="拖出连线"
+            />
+            <div
+              className="absolute w-3.5 h-3.5 rounded-full border-2 border-white shadow cursor-pointer hover:scale-150 transition-transform z-10"
+              style={{ left: -7, top: 54, background: getNodeColor(node.type), pointerEvents: 'auto' }}
+              onMouseUp={(e) => { e.stopPropagation(); handlePortMouseUp(e, node.id, 'input'); }}
+              title="连线入口"
+            />
           </div>
         ))}
       </div>

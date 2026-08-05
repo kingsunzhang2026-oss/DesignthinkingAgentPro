@@ -12,7 +12,7 @@ import {
   uploadPrototypeAsset, uploadReferenceImageGetUrl, saveGeneratedModel,
   getPrototypeAssets, deletePrototypeAsset, PrototypeAsset, AssetType,
 } from '../../services/storage';
-import { usePanelArchive, loadAllPanelStates } from '../../services/panelArchive';
+import { usePanelArchive } from '../../services/panelArchive';
 import { ArchiveButton } from '../ArchiveButton';
 import { useDesignStore } from '../../services/designStore';
 
@@ -347,78 +347,6 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
     });
   };
 
-  // ---------- 导出设计报告（汇总各节点存档）----------
-  const exportReport = async () => {
-    try {
-      const rows = await loadAllPanelStates('default');
-      const latest = (type: string) => {
-        const r = rows.find((x) => x.panel_type === type);
-        return r?.data || null;
-      };
-      const ctx = latest('context');
-      const prob = latest('problem');
-      const align = latest('alignment');
-      const val = latest('value');
-      const sol = latest('solution');
-
-      const lines: string[] = [];
-      lines.push('# 小钳智能双极电刀 V2 · 设计思考报告');
-      lines.push('');
-      lines.push(`> 导出时间：${new Date().toLocaleString('zh-CN', { hour12: false })}`);
-      lines.push('');
-      lines.push('## 一、情境扩展（Context）');
-      if (ctx) {
-        lines.push(`- 设备：${ctx.deviceName || '—'}`);
-        (ctx.scenarios || []).forEach((s: any, i: number) => {
-          lines.push(`- 场景 ${i + 1}：${s.title}（${s.type}）— ${s.description}`);
-        });
-      } else lines.push('- 暂无存档');
-      lines.push('');
-      lines.push('## 二、问题定义（Problem）');
-      if (prob) {
-        (prob.goals || []).forEach((g: any, i: number) => {
-          lines.push(`${i + 1}. [${g.priority}] ${g.title} — ${g.description}`);
-        });
-        if (prob.generatedPrompt) lines.push('\n**结构化提示词：**\n```\n' + prob.generatedPrompt + '\n```');
-      } else lines.push('- 暂无存档');
-      lines.push('');
-      lines.push('## 三、人机对齐（Alignment）');
-      if (align && align.deviations?.length) {
-        align.deviations.forEach((d: any, i: number) => {
-          lines.push(`${i + 1}. ${d.title}（${d.priority}）：${d.description} → 改善：${d.improvement}`);
-        });
-      } else lines.push('- 暂无存档');
-      lines.push('');
-      lines.push('## 四、价值评估（Value）');
-      if (val && val.roiMetrics?.length) {
-        val.roiMetrics.forEach((m: any) => {
-          lines.push(`- ${m.name}：权重 ${(m.weight * 100).toFixed(0)}% · 预期 ${m.value} · ${m.impact}影响`);
-        });
-      } else lines.push('- 暂无存档');
-      lines.push('');
-      lines.push('## 五、方案原型（Solution）');
-      if (sol) {
-        lines.push(`- 生成模式：${sol.genMode} · 质量：${sol.tier} · 复合方案数：${sol.variantCount} · 策略：${sol.strategy}`);
-        (sol.variants || []).forEach((v: any) => {
-          lines.push(`- 方案 ${v.label}：${v.prompt || '—'}`);
-        });
-      } else lines.push('- 暂无存档');
-      lines.push('');
-      lines.push('---');
-      lines.push('由 Designthinking Agent Pro 自动汇总生成。');
-
-      const blob = new Blob([lines.join('\n')], { type: 'text/markdown;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `design-report-${Date.now()}.md`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (e: any) {
-      alert('导出报告失败：' + (e?.message || e));
-    }
-  };
-
   return (
     <div className="flex flex-col h-full">
       {/* 顶部存档栏 */}
@@ -468,22 +396,6 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
               </button>
             ))}
             <span className="text-xs text-gray-400">（每个为一独立子智能体）</span>
-          </div>
-
-          {/* 生成策略 */}
-          <div className="flex items-center gap-3 mb-3">
-            <span className="text-xs text-gray-600">生成策略：</span>
-            {(['concurrent', 'sequential'] as const).map((s) => (
-              <button
-                key={s}
-                onClick={() => setStrategy(s)}
-                className={`px-3 py-1 rounded text-xs border ${
-                  strategy === s ? 'border-[#FF9500] bg-orange-50 text-[#CC7700]' : 'border-gray-200 text-gray-500'
-                }`}
-              >
-                {s === 'concurrent' ? '并发生成' : '顺序生成'}
-              </button>
-            ))}
           </div>
 
           {/* 模式切换 */}
@@ -693,14 +605,6 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
             </div>
           )}
         </div>
-
-        {/* ===== 导出报告 ===== */}
-        <button
-          onClick={exportReport}
-          className="w-full border border-[#5856D6] text-[#5856D6] hover:bg-purple-50 px-4 py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
-        >
-          <File className="w-4 h-4" /> 导出设计报告 (.md)
-        </button>
       </div>
     </div>
   );

@@ -43,11 +43,24 @@ export function BehaviorPanel({
     initial: '',
   });
 
-  // 将存档字符串解析为 { id: score } 对象
-  const parseScoreString = (str: string): Record<string, number> => {
-    if (!str.trim()) return {};
+  // 将存档解析为 { id: score } 对象（兼容旧格式对象 {a:10}）
+  const parseScoreString = (raw: any): Record<string, number> => {
+    if (raw == null) return {};
+    // 兼容旧存档：曾以对象 {a:10, b:8} 形式存入
+    if (typeof raw !== 'string') {
+      if (typeof raw === 'object') {
+        const obj: Record<string, number> = {};
+        for (const k of Object.keys(raw)) {
+          const v = Number(raw[k]);
+          if (!Number.isNaN(v)) obj[k] = v;
+        }
+        return obj;
+      }
+      return {};
+    }
+    if (!raw.trim()) return {};
     const result: Record<string, number> = {};
-    str.split(',').forEach((pair) => {
+    raw.split(',').forEach((pair: string) => {
       const [id, score] = pair.trim().split('-');
       if (id && score !== undefined) {
         const n = parseInt(score, 10);
@@ -67,9 +80,9 @@ export function BehaviorPanel({
 
   const [regionScores, setRegionScores] = useState<Record<string, number>>({});
 
-  // 加载到的存档回填到本地 state
+  // 加载到的存档回填到本地 state（parseScoreString 内部已兼容旧格式对象）
   useEffect(() => {
-    if (!loadingArchive && archivedRegionScoreStr && archivedRegionScoreStr.trim().length > 0) {
+    if (!loadingArchive && archivedRegionScoreStr != null) {
       setRegionScores(parseScoreString(archivedRegionScoreStr));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
