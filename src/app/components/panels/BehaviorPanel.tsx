@@ -766,22 +766,33 @@ export function BehaviorPanel({
 
   return (
     <div className="flex flex-col h-full">
-      {/* Tabs */}
+      {/* Tabs + 存档按钮（最右边固定不滚动）*/}
       <div className="border-b border-gray-200 bg-gray-50">
-        <div className="flex overflow-x-auto">
-          {taskSequences.map((seq, index) => (
-            <button
-              key={seq.scenarioId}
-              onClick={() => setActiveTab(index)}
-              className={`px-4 py-3 text-sm whitespace-nowrap border-b-2 transition-colors ${
-                activeTab === index
-                  ? 'border-[#007AFF] text-[#007AFF] bg-white'
-                  : 'border-transparent text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              {seq.scenarioTitle}
-            </button>
-          ))}
+        <div className="flex items-center">
+          <div className="flex overflow-x-auto flex-1 min-w-0">
+            {taskSequences.map((seq, index) => (
+              <button
+                key={seq.scenarioId}
+                onClick={() => setActiveTab(index)}
+                className={`px-4 py-3 text-sm whitespace-nowrap border-b-2 transition-colors ${
+                  activeTab === index
+                    ? 'border-[#007AFF] text-[#007AFF] bg-white'
+                    : 'border-transparent text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                {seq.scenarioTitle}
+              </button>
+            ))}
+          </div>
+          <div className="flex-shrink-0 pl-3 pr-3 py-2 border-l border-gray-200 bg-white">
+            <ArchiveButton
+              data={regionScores}
+              onSave={saveRegionScores}
+              saving={savingArchive}
+              lastSavedAt={regionArchivedAt}
+              label="存档"
+            />
+          </div>
         </div>
       </div>
 
@@ -1040,23 +1051,16 @@ export function BehaviorPanel({
         {/* Hand Anatomy Heatmap (a-v 共 22 区，0-10 打分) */}
         <div className="border border-gray-200 rounded-lg p-4 bg-white">
           <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
-            <h3 className="text-sm text-gray-700">手部解剖热力图 <span className="text-xs text-gray-400">(a-v 共 22 区)</span></h3>
-            <ArchiveButton
-              data={regionScores}
-              onSave={saveRegionScores}
-              saving={savingArchive}
-              lastSavedAt={regionArchivedAt}
-              label="存档"
-            />
+            <h3 className="text-sm text-gray-700">手部解剖热力图 <span className="text-xs text-gray-400">(点击分区录入 0-10 分)</span></h3>
+            <div className="text-[10px] text-gray-400">
+              已打分 {Object.values(regionScores).filter((s) => s > 0).length} / 22
+            </div>
           </div>
-          <p className="text-xs text-gray-600 mb-3">
-            点击分区录入 0-10 不舒适度（参照 IH vs OH/SH 对比研究）
-          </p>
 
           <div className="relative w-full max-w-md mx-auto bg-white rounded-lg border border-gray-200">
-            <svg viewBox="0 0 1139 896" className="w-full h-auto">
-              {/* 原图作为底图 */}
-              <image href="/hand-anatomy.png" x="0" y="0" width="1139" height="896" preserveAspectRatio="xMidYMid meet" />
+            <svg viewBox="0 0 980 896" className="w-full h-auto">
+              {/* 原图作为底图（裁掉右边图例区域，只保留手部）*/}
+              <image href="/hand-anatomy.png" x="0" y="0" width="1139" height="896" preserveAspectRatio="xMinYMin slice" />
               {/* 22 个分区 hit area */}
               {HAND_REGIONS.map((r) => {
                 const score = regionScores[r.id] || 0;
@@ -1066,7 +1070,7 @@ export function BehaviorPanel({
                     key={r.id}
                     points={r.polygon}
                     fill={scoreColor(score)}
-                    stroke={isSelected ? '#007AFF' : 'rgba(0,0,0,0.15)'}
+                    stroke={isSelected ? '#007AFF' : 'rgba(0,0,0,0.12)'}
                     strokeWidth={isSelected ? 3 : 1}
                     className="cursor-pointer transition-all"
                     onClick={() => handleRegionClick(r.id)}
@@ -1075,26 +1079,7 @@ export function BehaviorPanel({
                   </polygon>
                 );
               })}
-              {/* 字母标签（始终可见，加白色描边便于在彩色背景上看清） */}
-              {HAND_REGIONS.map((r) => (
-                <text
-                  key={`lbl-${r.id}`}
-                  x={r.cx}
-                  y={r.cy}
-                  textAnchor="middle"
-                  dominantBaseline="central"
-                  fontSize="28"
-                  fontWeight="600"
-                  fill="#1a1a1a"
-                  stroke="#ffffff"
-                  strokeWidth="3"
-                  paintOrder="stroke"
-                  style={{ pointerEvents: 'none' }}
-                >
-                  {r.id}
-                </text>
-              ))}
-              {/* 选中区域右上角显示分数 */}
+              {/* 选中区域右上角显示分数徽章 */}
               {selectedRegion && (() => {
                 const r = HAND_REGIONS.find((x) => x.id === selectedRegion);
                 if (!r) return null;
