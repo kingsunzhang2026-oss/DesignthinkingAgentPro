@@ -20,8 +20,11 @@ export function BehaviorPanel({
 }: BehaviorPanelProps) {
   const [activeTab, setActiveTab] = useState(0);
   // taskSequences state is now managed by parent
-  const [selectedHotspot, setSelectedHotspot] = useState<string | null>(null);
   const [editingRecordPoint, setEditingRecordPoint] = useState<string | null>(null);
+
+  // 22 个手部分区打分 (a-v)
+  const [regionScores, setRegionScores] = useState<Record<string, number>>({});
+  const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
   
   // New State for Task Management
   const [isGenerating, setIsGenerating] = useState(false);
@@ -487,50 +490,54 @@ export function BehaviorPanel({
     }
   };
 
-  const hotspots = [
-    { id: 'thumb', x: 45, y: 35, label: '拇指' },
-    { id: 'index1', x: 65, y: 25, label: '食指第一指节' },
-    { id: 'index2', x: 70, y: 35, label: '食指第二指节' },
-    { id: 'middle', x: 72, y: 50, label: '中指' },
-    { id: 'palm', x: 40, y: 60, label: '掌心大鱼际' },
+  // 22 个手部分区 (a-v，按原图位置排布；viewBox 0 0 1139 896)
+  const HAND_REGIONS: { id: string; label: string; cx: number; cy: number; polygon: string; desc: string }[] = [
+    { id: 'v',  label: '拇指尖',      cx: 145, cy: 470, polygon: '95,380 200,400 200,540 95,540',     desc: '拇指远端' },
+    { id: 'u',  label: '拇指中段',    cx: 200, cy: 470, polygon: '160,400 245,420 245,530 160,520', desc: '拇指中段（腕掌关节附近）' },
+    { id: 't',  label: '大鱼际',      cx: 345, cy: 530, polygon: '275,460 415,470 415,590 275,585', desc: '拇指根部掌侧肌肉群' },
+    { id: 'c',  label: '食指指尖',    cx: 540, cy: 105, polygon: '510,55 575,75 575,150 505,140',   desc: '食指远端' },
+    { id: 'd',  label: '食指第一节',  cx: 540, cy: 195, polygon: '505,150 575,180 565,240 505,225', desc: '食指第一指节' },
+    { id: 'h',  label: '食指第二节',  cx: 540, cy: 280, polygon: '505,235 575,250 575,320 505,320', desc: '食指第二指节' },
+    { id: 'l',  label: '食指根部',    cx: 540, cy: 360, polygon: '505,320 580,335 575,395 505,395', desc: '食指掌指关节' },
+    { id: 'p',  label: '食指根部(小鱼际侧)', cx: 525, cy: 425, polygon: '470,380 580,400 580,460 470,460', desc: '食指根部小鱼际侧' },
+    { id: 'b',  label: '中指指尖',    cx: 650, cy: 105, polygon: '625,55 685,75 685,150 620,140',   desc: '中指远端' },
+    { id: 'f',  label: '中指第一节',  cx: 650, cy: 195, polygon: '620,150 690,170 690,225 620,225', desc: '中指第一指节' },
+    { id: 'g1', label: '中指第二节',  cx: 650, cy: 280, polygon: '620,225 690,240 690,320 620,320', desc: '中指第二指节（上方g）' },
+    { id: 'k',  label: '中指根部',    cx: 660, cy: 360, polygon: '620,320 705,330 700,395 620,395', desc: '中指掌指关节' },
+    { id: 's',  label: '中指根部(掌心侧)', cx: 625, cy: 435, polygon: '545,400 705,420 705,470 545,470', desc: '中指根部掌侧' },
+    { id: 'o',  label: '无名/中指连接', cx: 650, cy: 365, polygon: '595,335 705,345 700,395 595,395', desc: '无名指与中指根连接处' },
+    { id: 'g2', label: '无名指第一节',cx: 740, cy: 195, polygon: '685,225 800,240 800,320 685,320', desc: '无名指第一/二节相邻区（下方g）' },
+    { id: 'n',  label: '无名指根部',  cx: 750, cy: 360, polygon: '700,330 805,345 805,395 700,395', desc: '无名指掌指关节' },
+    { id: 'm',  label: '无名/小指根', cx: 910, cy: 360, polygon: '870,320 955,335 955,395 870,395', desc: '无名指与小指根连接处' },
+    { id: 'a',  label: '小指指尖',    cx: 900, cy: 105, polygon: '875,55 935,75 935,150 870,140',   desc: '小指远端' },
+    { id: 'e',  label: '小指第一节',  cx: 900, cy: 195, polygon: '870,150 940,170 940,225 870,225', desc: '小指第一指节' },
+    { id: 'i',  label: '小指第二节',  cx: 905, cy: 280, polygon: '870,225 945,240 945,320 870,320', desc: '小指第二指节' },
+    { id: 'q',  label: '小指根(小鱼际)', cx: 830, cy: 435, polygon: '740,395 925,415 925,470 740,470', desc: '小指根部小鱼际' },
+    { id: 'r',  label: '掌心中央',    cx: 600, cy: 530, polygon: '430,470 770,490 770,580 430,580', desc: '掌心中央' },
   ];
 
-  const handleHotspotClick = (hotspot: { id: string, label: string }) => {
-    setSelectedHotspot(hotspot.id);
-    
-    // Auto-add record point to the current Active task (or the last one if none active)
-    const currentSeqIndex = activeTab;
-    if (currentSeqIndex < 0 || currentSeqIndex >= taskSequences.length) return;
-    
-    const currentSeq = taskSequences[currentSeqIndex];
-    if (currentSeq.tasks.length === 0) return;
-
-    // Find target task: first active, or last pending, or just last one
-    let targetTaskIndex = currentSeq.tasks.findIndex(t => t.status === 'active');
-    if (targetTaskIndex === -1) {
-        targetTaskIndex = currentSeq.tasks.length - 1;
+  // 0-10 打分 → 颜色（0 透明，10 深红；蓝→黄→红渐变）
+  const scoreColor = (s: number) => {
+    if (s <= 0) return 'rgba(255,255,255,0)';
+    const t = Math.min(1, s / 10);
+    let r: number, g: number, b: number;
+    if (t < 0.5) {
+      const u = t / 0.5;
+      r = Math.round(0 + 255 * u);
+      g = Math.round(120 + (200 - 120) * u);
+      b = Math.round(255 + (0 - 255) * u);
+    } else {
+      const u = (t - 0.5) / 0.5;
+      r = Math.round(255 + (220 - 255) * u);
+      g = Math.round(200 + (40 - 200) * u);
+      b = Math.round(0 + 40 * u);
     }
-
-    const newSequences = [...taskSequences];
-    const targetTask = newSequences[currentSeqIndex].tasks[targetTaskIndex];
-
-    const newPointId = `rp-hotspot-${Date.now()}`;
-    targetTask.recordPoints.push({
-        id: newPointId,
-        label: `${hotspot.label}压痛`,
-        value: '',
-        editable: true,
-        unit: 'VAS',
-        range: '0-10',
-        guidance: '视觉模拟评分：0(无痛)-10(剧痛)。请记录疼痛性质(刺痛/酸痛)。',
-        risk: '>3 需关注，>5 可能造成运动损伤'
-    });
-    
-    // Set to editing immediately
-    setEditingRecordPoint(newPointId);
-    
-    onTaskSequencesChange(newSequences);
+    return `rgba(${r},${g},${b},${0.35 + t * 0.4})`;
   };
+
+  const handleRegionClick = (id: string) => setSelectedRegion(id);
+  const handleRegionScore = (id: string, score: number) =>
+    setRegionScores((prev) => ({ ...prev, [id]: score }));
 
   const handleUpdateRecordPoint = (taskId: string, recordPointId: string, value: string) => {
     onTaskSequencesChange(taskSequences.map((seq, idx) => 
@@ -1005,73 +1012,163 @@ export function BehaviorPanel({
           ))}
         </div>
 
-        {/* Hand Anatomy Heatmap */}
+        {/* Hand Anatomy Heatmap (a-v 共 22 区，0-10 打分) */}
         <div className="border border-gray-200 rounded-lg p-4 bg-white">
-          <h3 className="text-sm text-gray-700 mb-3">手部解剖热力图</h3>
-          <p className="text-xs text-gray-600 mb-4">
-            点击图中位置记录压痛点或接触区域
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm text-gray-700">手部解剖热力图 <span className="text-xs text-gray-400">(a-v 共 22 区)</span></h3>
+            <div className="text-[10px] text-gray-400">
+              已打分 {Object.values(regionScores).filter((s) => s > 0).length} / 22
+            </div>
+          </div>
+          <p className="text-xs text-gray-600 mb-3">
+            点击分区录入 0-10 不舒适度（参照 IH vs OH/SH 对比研究）
           </p>
 
-          <div className="relative w-full aspect-square max-w-xs mx-auto bg-gradient-to-br from-blue-50 to-gray-50 rounded-lg border border-gray-200">
-            {/* Simplified Hand Shape */}
-            <svg viewBox="0 0 100 100" className="w-full h-full">
-              {/* Palm */}
-              <ellipse cx="40" cy="60" rx="20" ry="25" fill="#E8F4FF" stroke="#007AFF" strokeWidth="0.5" opacity="0.6" />
-              
-              {/* Thumb */}
-              <ellipse cx="30" cy="40" rx="8" ry="15" fill="#E8F4FF" stroke="#007AFF" strokeWidth="0.5" opacity="0.6" transform="rotate(-30 30 40)" />
-              
-              {/* Fingers */}
-              <ellipse cx="50" cy="25" rx="5" ry="18" fill="#E8F4FF" stroke="#007AFF" strokeWidth="0.5" opacity="0.6" />
-              <ellipse cx="60" cy="30" rx="5" ry="20" fill="#E8F4FF" stroke="#007AFF" strokeWidth="0.5" opacity="0.6" />
-              <ellipse cx="68" cy="38" rx="4" ry="18" fill="#E8F4FF" stroke="#007AFF" strokeWidth="0.5" opacity="0.6" />
-              <ellipse cx="75" cy="48" rx="4" ry="15" fill="#E8F4FF" stroke="#007AFF" strokeWidth="0.5" opacity="0.6" />
-
-              {/* Hotspot markers */}
-              {hotspots.map((hotspot) => (
-                <g key={hotspot.id}>
-                  <circle
-                    cx={hotspot.x}
-                    cy={hotspot.y}
-                    r="4"
-                    fill={selectedHotspot === hotspot.id ? '#FF9500' : '#007AFF'}
-                    opacity={selectedHotspot === hotspot.id ? '1' : '0.7'}
-                    className="cursor-pointer hover:opacity-100 transition-opacity"
-                    onClick={() => handleHotspotClick(hotspot)}
-                  />
-                  {selectedHotspot === hotspot.id && (
-                    <circle
-                      cx={hotspot.x}
-                      cy={hotspot.y}
-                      r="8"
-                      fill="none"
-                      stroke="#FF9500"
-                      strokeWidth="1.5"
-                      opacity="0.5"
-                    >
-                      <animate attributeName="r" from="4" to="12" dur="1s" repeatCount="indefinite" />
-                      <animate attributeName="opacity" from="0.8" to="0" dur="1s" repeatCount="indefinite" />
-                    </circle>
-                  )}
-                </g>
+          <div className="relative w-full max-w-md mx-auto bg-white rounded-lg border border-gray-200">
+            <svg viewBox="0 0 1139 896" className="w-full h-auto">
+              {/* 原图作为底图 */}
+              <image href="/hand-anatomy.png" x="0" y="0" width="1139" height="896" preserveAspectRatio="xMidYMid meet" />
+              {/* 22 个分区 hit area */}
+              {HAND_REGIONS.map((r) => {
+                const score = regionScores[r.id] || 0;
+                const isSelected = selectedRegion === r.id;
+                return (
+                  <polygon
+                    key={r.id}
+                    points={r.polygon}
+                    fill={scoreColor(score)}
+                    stroke={isSelected ? '#007AFF' : 'rgba(0,0,0,0.15)'}
+                    strokeWidth={isSelected ? 3 : 1}
+                    className="cursor-pointer transition-all"
+                    onClick={() => handleRegionClick(r.id)}
+                  >
+                    <title>{r.label}（当前 {score}/10）</title>
+                  </polygon>
+                );
+              })}
+              {/* 字母标签（始终可见，加白色描边便于在彩色背景上看清） */}
+              {HAND_REGIONS.map((r) => (
+                <text
+                  key={`lbl-${r.id}`}
+                  x={r.cx}
+                  y={r.cy}
+                  textAnchor="middle"
+                  dominantBaseline="central"
+                  fontSize="28"
+                  fontWeight="600"
+                  fill="#1a1a1a"
+                  stroke="#ffffff"
+                  strokeWidth="3"
+                  paintOrder="stroke"
+                  style={{ pointerEvents: 'none' }}
+                >
+                  {r.id}
+                </text>
               ))}
+              {/* 选中区域右上角显示分数 */}
+              {selectedRegion && (() => {
+                const r = HAND_REGIONS.find((x) => x.id === selectedRegion);
+                if (!r) return null;
+                const s = regionScores[r.id] || 0;
+                return (
+                  <g>
+                    <circle cx={r.cx + 35} cy={r.cy - 35} r="22" fill="#007AFF" stroke="#fff" strokeWidth="2" />
+                    <text x={r.cx + 35} y={r.cy - 35} textAnchor="middle" dominantBaseline="central" fontSize="20" fontWeight="700" fill="#fff" style={{ pointerEvents: 'none' }}>
+                      {s}
+                    </text>
+                  </g>
+                );
+              })()}
             </svg>
           </div>
 
-          {/* Selected Hotspot Info */}
-          {selectedHotspot && (
-            <div className="mt-4 p-3 bg-orange-50 border border-[#FF9500] rounded-lg animate-in fade-in slide-in-from-top-1">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm text-gray-900">
-                  已添加: {hotspots.find(h => h.id === selectedHotspot)?.label}压痛
-                </span>
-                <span className="text-xs px-2 py-0.5 rounded bg-[#FF9500] text-white">
-                  已记录
-                </span>
+          {/* 选中区域的 0-10 滑块 */}
+          {selectedRegion && (() => {
+            const r = HAND_REGIONS.find((x) => x.id === selectedRegion);
+            if (!r) return null;
+            const score = regionScores[r.id] || 0;
+            return (
+              <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <span className="text-sm text-gray-900 font-medium">{r.id} · {r.label}</span>
+                    <span className="text-xs text-gray-500 ml-2">({r.desc})</span>
+                  </div>
+                  <button
+                    onClick={() => setSelectedRegion(null)}
+                    className="text-xs text-gray-400 hover:text-gray-700"
+                    title="关闭"
+                  >✕</button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="range"
+                    min="0"
+                    max="10"
+                    value={score}
+                    onChange={(e) => handleRegionScore(r.id, Number(e.target.value))}
+                    className="flex-1 accent-[#007AFF]"
+                  />
+                  <div
+                    className="w-10 h-8 rounded flex items-center justify-center text-white text-sm font-medium"
+                    style={{ background: scoreColor(score).replace(/rgba\(([^)]+)\)/, (_m, c) => {
+                      // 把 alpha 改为 1 让数字清晰
+                      const parts = c.split(',');
+                      parts[3] = '1';
+                      return `rgb(${parts.slice(0,3).join(',')})`;
+                    }) }}
+                  >
+                    {score}
+                  </div>
+                </div>
+                <div className="flex justify-between text-[10px] text-gray-400 mt-1">
+                  <span>0 无不适</span>
+                  <span>5 明显不适</span>
+                  <span>10 剧痛</span>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                    <button
+                      key={n}
+                      onClick={() => handleRegionScore(r.id, n)}
+                      className={`w-7 h-7 rounded text-xs border transition-colors ${
+                        score === n
+                          ? 'bg-[#007AFF] text-white border-[#007AFF]'
+                          : 'bg-white text-gray-600 border-gray-200 hover:border-[#007AFF]'
+                      }`}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <p className="text-xs text-gray-600">
-                该记录点已自动添加到当前任务列表中，请补充疼痛评分。
-              </p>
+            );
+          })()}
+
+          {/* 22 区分数总览（已打分的） */}
+          {Object.keys(regionScores).length > 0 && (
+            <div className="mt-3">
+              <div className="text-xs text-gray-500 mb-1">已记录：</div>
+              <div className="flex flex-wrap gap-1">
+                {HAND_REGIONS.filter((r) => (regionScores[r.id] || 0) > 0).map((r) => (
+                  <button
+                    key={r.id}
+                    onClick={() => setSelectedRegion(r.id)}
+                    className="px-2 py-0.5 rounded text-[11px] border"
+                    style={{
+                      background: scoreColor(regionScores[r.id]).replace(/rgba\(([^)]+)\)/, (_m, c) => {
+                        const parts = c.split(',');
+                        parts[3] = '0.9';
+                        return `rgba(${parts.join(',')})`;
+                      }),
+                      borderColor: 'rgba(0,0,0,0.1)',
+                    }}
+                    title={`${r.label}：${regionScores[r.id]}/10`}
+                  >
+                    <span className="font-medium">{r.id}</span> {regionScores[r.id]}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
         </div>
