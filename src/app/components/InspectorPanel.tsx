@@ -97,7 +97,7 @@ export function InspectorPanel({
           />
         )}
         {nodeType === 'problem' && <ProblemNodePanel />}
-        {nodeType === 'solution' && <SolutionNodePanel />}
+        {nodeType === 'solution' && <SolutionNodePanel nodeId={selectedNode} />}
         {nodeType === 'value' && <ValueNodePanel />}
       </div>
     </div>

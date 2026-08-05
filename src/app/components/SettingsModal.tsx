@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { X, Upload, FileText, Trash2, Key, CheckCircle2, AlertCircle } from 'lucide-react';
+import { X, Upload, FileText, Trash2, Key, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { getApiKey, saveApiKey, clearApiKey, testApiKey } from '../services/llm';
-import { extractMultipleDocuments, DocumentContent } from '../services/documents';
 import { DeepSeekTestPanel } from './DeepSeekTestPanel';
+import { uploadKnowledgeDoc, getKnowledgeDocs, deleteKnowledgeDoc, KnowledgeDoc } from '../services/storage';
 
 interface SettingsModalProps {
   onClose: () => void;
@@ -10,41 +10,89 @@ interface SettingsModalProps {
   onKnowledgeBaseChange: (kb: any[]) => void;
 }
 
+interface KbEntry {
+  id: string;
+  name: string;
+  size: number;
+  type: string;
+  content: string;
+  uploadedAt: string;
+  doc?: KnowledgeDoc; // 数据库记录（用于删除时定位 storage_path）
+}
+
 export function SettingsModal({ onClose, knowledgeBase, onKnowledgeBaseChange }: SettingsModalProps) {
   const [isProcessingFiles, setIsProcessingFiles] = useState(false);
+  const [loadingDocs, setLoadingDocs] = useState(true);
+
+  // 挂载时从数据库加载已上传的知识库文档
+  useEffect(() => {
+    (async () => {
+      try {
+        const docs = await getKnowledgeDocs();
+        const mapped: KbEntry[] = docs.map((d) => ({
+          id: d.id,
+          name: d.name,
+          size: d.size,
+          type: d.type,
+          content: '[已上传知识库文档，可在 AI 分析时引用]',
+          uploadedAt: d.uploaded_at,
+          doc: d,
+        }));
+        onKnowledgeBaseChange(mapped);
+      } catch (e) {
+        console.error('加载知识库失败', e);
+      } finally {
+        setLoadingDocs(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
     setIsProcessingFiles(true);
-
     try {
-      // 提取文档内容
-      const documents = await extractMultipleDocuments(Array.from(files));
-
-      // 转换为知识库格式
-      const newFiles = documents.map(doc => ({
-        id: doc.id,
-        name: doc.name,
-        size: doc.size,
-        type: doc.type,
-        content: doc.content,
-        error: doc.error,
-        uploadedAt: new Date().toISOString()
-      }));
-
-      onKnowledgeBaseChange([...knowledgeBase, ...newFiles]);
+      const newEntries: KbEntry[] = [];
+      for (const file of Array.from(files)) {
+        try {
+          const doc = await uploadKnowledgeDoc(file);
+          newEntries.push({
+            id: doc.id,
+            name: doc.name,
+            size: doc.size,
+            type: doc.type,
+            content: '[已上传知识库文档，可在 AI 分析时引用]',
+            uploadedAt: doc.uploaded_at,
+            doc,
+          });
+        } catch (err: any) {
+          alert(`文件「${file.name}」上传失败：${err?.message || err}`);
+        }
+      }
+      if (newEntries.length > 0) {
+        onKnowledgeBaseChange([...knowledgeBase, ...newEntries]);
+      }
     } catch (error) {
       console.error('文件处理失败:', error);
       alert('部分文件处理失败，请检查文件格式');
     } finally {
       setIsProcessingFiles(false);
+      e.target.value = '';
     }
   };
 
-  const handleRemoveFile = (id: string) => {
-    onKnowledgeBaseChange(knowledgeBase.filter(f => f.id !== id));
+  const handleRemoveFile = async (entry: KbEntry) => {
+    if (entry.doc) {
+      try {
+        await deleteKnowledgeDoc(entry.doc);
+      } catch (err: any) {
+        alert('删除失败：' + (err?.message || err));
+        return;
+      }
+    }
+    onKnowledgeBaseChange(knowledgeBase.filter((f) => f.id !== entry.id));
   };
 
   const formatFileSize = (bytes: number) => {
@@ -77,7 +125,7 @@ export function SettingsModal({ onClose, knowledgeBase, onKnowledgeBaseChange }:
             <div>
               <h3 className="text-sm text-gray-900 mb-2">AI 知识库</h3>
               <p className="text-xs text-gray-600 mb-4">
-                上传国标、行标、设计规范等参考文档，用于 AI 生成场景和分析报告
+                上传国标、行标、设计规范等参考文档，文件将保存到云端（Supabase Storage），用于 AI 生成场景和分析报告
               </p>
 
               {/* Upload Area */}
@@ -90,41 +138,51 @@ export function SettingsModal({ onClose, knowledgeBase, onKnowledgeBaseChange }:
                   className="hidden"
                 />
                 <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-[#007AFF] hover:bg-blue-50 transition-colors">
-                  <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                  <p className="text-sm text-gray-600">点击上传或拖拽文件到此处</p>
+                  {isProcessingFiles ? (
+                    <Loader2 className="w-8 h-8 text-gray-400 mx-auto mb-2 animate-spin" />
+                  ) : (
+                    <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                  )}
+                  <p className="text-sm text-gray-600">
+                    {isProcessingFiles ? '上传并保存中…' : '点击上传或拖拽文件到此处'}
+                  </p>
                   <p className="text-xs text-gray-500 mt-1">
-                    支持 PDF、DOCX、TXT、MD 等格式
+                    支持 PDF、DOCX、TXT、MD 等格式（云端持久化，刷新不丢失）
                   </p>
                 </div>
               </label>
 
               {/* Files List */}
-              {knowledgeBase.length > 0 && (
-                <div className="mt-4 space-y-2">
-                  <div className="text-xs text-gray-600 mb-2">
-                    已上传 {knowledgeBase.length} 个文档
-                  </div>
-                  {knowledgeBase.map((file) => (
-                    <div key={file.id} className="flex items-center justify-between p-3 bg-gray-50 rounded border border-gray-200">
-                      <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <FileText className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm text-gray-900 truncate">{file.name}</p>
-                          <p className="text-xs text-gray-500">
-                            {formatFileSize(file.size)} · {new Date(file.uploadedAt).toLocaleDateString()}
-                          </p>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => handleRemoveFile(file.id)}
-                        className="p-1.5 hover:bg-red-100 rounded transition-colors flex-shrink-0 ml-2"
-                        title="删除"
-                      >
-                        <Trash2 className="w-4 h-4 text-red-600" />
-                      </button>
+              {loadingDocs ? (
+                <p className="mt-4 text-xs text-gray-400">加载知识库…</p>
+              ) : (
+                knowledgeBase.length > 0 && (
+                  <div className="mt-4 space-y-2">
+                    <div className="text-xs text-gray-600 mb-2">
+                      已上传 {knowledgeBase.length} 个文档
                     </div>
-                  ))}
-                </div>
+                    {knowledgeBase.map((file: any) => (
+                      <div key={file.id} className="flex items-center justify-between p-3 bg-gray-50 rounded border border-gray-200">
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                          <FileText className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm text-gray-900 truncate">{file.name}</p>
+                            <p className="text-xs text-gray-500">
+                              {formatFileSize(file.size)} · {new Date(file.uploadedAt).toLocaleDateString()}
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleRemoveFile(file)}
+                          className="p-1.5 hover:bg-red-100 rounded transition-colors flex-shrink-0 ml-2"
+                          title="删除"
+                        >
+                          <Trash2 className="w-4 h-4 text-red-600" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )
               )}
             </div>
           </div>
@@ -136,13 +194,7 @@ export function SettingsModal({ onClose, knowledgeBase, onKnowledgeBaseChange }:
             onClick={onClose}
             className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded transition-colors"
           >
-            取消
-          </button>
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm bg-[#007AFF] hover:bg-[#0051D5] text-white rounded transition-colors"
-          >
-            保存设置
+            关闭
           </button>
         </div>
       </div>
