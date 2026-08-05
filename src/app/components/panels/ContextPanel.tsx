@@ -1,8 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Sparkles, CheckCircle2, Plus, MoreVertical, Edit2, Trash2, Loader2 } from 'lucide-react';
 import { ScenarioData } from '../../App';
 import { generateScenarios } from '../../services/aiScenarios';
 import { hasApiKey } from '../../services/llm';
+import { usePanelArchive } from '../../services/panelArchive';
+import { ArchiveButton } from '../ArchiveButton';
+import { useDesignStore } from '../../services/designStore';
 
 interface ContextPanelProps {
   scenarios: ScenarioData[];
@@ -25,6 +28,36 @@ export function ContextPanel({ scenarios, onScenariosChange, knowledgeBase }: Co
     description: '',
     parameters: [{ label: '', value: '' }]
   });
+
+  // ---- 存档 + 输出注册（作为问题节点的数据源）----
+  const { registerOutput } = useDesignStore();
+  const {
+    data: ctxArchived,
+    save: saveCtx,
+    saving: ctxSaving,
+    lastSavedAt: ctxSavedAt,
+    loading: ctxLoading,
+  } = usePanelArchive({
+    projectId: 'default',
+    nodeId: 'context',
+    panelType: 'context',
+    initial: { deviceName, scenarios },
+  });
+
+  useEffect(() => {
+    if (!ctxLoading && ctxArchived) {
+      if (ctxArchived.deviceName) setDeviceName(ctxArchived.deviceName);
+      if (Array.isArray(ctxArchived.scenarios) && ctxArchived.scenarios.length) {
+        onScenariosChange(ctxArchived.scenarios);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ctxArchived, ctxLoading]);
+
+  // 实时登记产出，供连线到问题节点时自动投递
+  useEffect(() => {
+    registerOutput('context', 'context', { deviceName, scenarios });
+  }, [deviceName, scenarios, registerOutput]);
 
   const toggleScenario = (id: string) => {
     onScenariosChange(scenarios.map(s => 
@@ -105,7 +138,19 @@ export function ContextPanel({ scenarios, onScenariosChange, knowledgeBase }: Co
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="flex flex-col h-full">
+      {/* 顶部存档栏 */}
+      <div className="border-b border-gray-200 bg-gray-50 px-6 py-2 flex items-center justify-between">
+        <span className="text-xs text-gray-500">情境语义扩展节点</span>
+        <ArchiveButton
+          data={{ deviceName, scenarios }}
+          onSave={() => saveCtx({ deviceName, scenarios })}
+          saving={ctxSaving}
+          lastSavedAt={ctxSavedAt}
+        />
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-6 space-y-6">
       {/* Device Input */}
       <div>
         <label className="block text-sm text-gray-700 mb-2">设备名称</label>
@@ -329,6 +374,7 @@ export function ContextPanel({ scenarios, onScenariosChange, knowledgeBase }: Co
             {scenarios.filter(s => s.selected).length} / {scenarios.length}
           </span>
         </div>
+      </div>
       </div>
     </div>
   );

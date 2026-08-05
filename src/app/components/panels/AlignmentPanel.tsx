@@ -1,8 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { AlertTriangle, CheckCircle2, TrendingUp, Loader2, X } from 'lucide-react';
 import { RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, Legend, ResponsiveContainer } from 'recharts';
 import { callLLM, hasApiKey } from '../../services/llm';
 import { TaskSequence, RecordPoint } from '../../App';
+import { usePanelArchive } from '../../services/panelArchive';
+import { ArchiveButton } from '../ArchiveButton';
 
 interface AlignmentPanelProps {
   onAnalysisComplete: (deviations: number) => void;
@@ -24,6 +26,22 @@ export function AlignmentPanel({ onAnalysisComplete, knowledgeBase = [], taskSeq
   const [deviations, setDeviations] = useState<DeviationItem[]>([]);
   const [error, setError] = useState<string>('');
   const [showMissingDataWarning, setShowMissingDataWarning] = useState(false);
+
+  // ---- 存档 ----
+  const {
+    data: alignArchived, save: saveAlign, saving: alignSaving,
+    lastSavedAt: alignSavedAt, loading: alignLoading,
+  } = usePanelArchive({
+    projectId: 'default', nodeId: 'alignment', panelType: 'alignment',
+    initial: { analyzed: false, deviations: [] },
+  });
+  useEffect(() => {
+    if (!alignLoading && alignArchived) {
+      setAnalyzed(Boolean(alignArchived.analyzed));
+      setDeviations(alignArchived.deviations || []);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [alignArchived, alignLoading]);
 
   // Extract actual data from task sequences
   const actualData = useMemo(() => {
@@ -264,7 +282,19 @@ export function AlignmentPanel({ onAnalysisComplete, knowledgeBase = [], taskSeq
   };
 
   return (
-    <div className="p-6 space-y-6 relative">
+    <div className="flex flex-col h-full">
+      {/* 顶部存档栏 */}
+      <div className="border-b border-gray-200 bg-gray-50 px-6 py-2 flex items-center justify-between">
+        <span className="text-xs text-gray-500">人机工程对齐节点</span>
+        <ArchiveButton
+          data={{ analyzed, deviations }}
+          onSave={() => saveAlign({ analyzed, deviations })}
+          saving={alignSaving}
+          lastSavedAt={alignSavedAt}
+        />
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-6 space-y-6 relative">
       {/* Missing Data Warning Dialog */}
       {showMissingDataWarning && (
         <div className="absolute inset-0 z-50 flex items-center justify-center p-4 bg-white/80 backdrop-blur-sm rounded-lg">
@@ -438,6 +468,7 @@ export function AlignmentPanel({ onAnalysisComplete, knowledgeBase = [], taskSeq
           </div>
         </div>
       )}
+    </div>
     </div>
   );
 }

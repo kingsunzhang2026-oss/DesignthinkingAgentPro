@@ -4,6 +4,8 @@ import { Sidebar } from './components/Sidebar';
 import { InspectorPanel } from './components/InspectorPanel';
 import { SettingsModal } from './components/SettingsModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { SolutionCompareView } from './components/SolutionCompareView';
+import { DesignProvider } from './services/designStore';
 import { performStartupCheck } from './services/debug';
 
 export interface ScenarioData {
@@ -249,59 +251,64 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <div className="flex h-screen bg-[#F5F5F7] text-gray-900 overflow-hidden">
-        {/* Left Sidebar */}
-        {!leftSidebarCollapsed && (
-          <Sidebar 
-            onToggleCollapse={() => setLeftSidebarCollapsed(true)}
-            onOpenSettings={() => setShowSettings(true)}
-          />
-        )}
+      <DesignProvider>
+        <div className="flex h-screen bg-[#F5F5F7] text-gray-900 overflow-hidden">
+          {/* Left Sidebar */}
+          {!leftSidebarCollapsed && (
+            <Sidebar 
+              onToggleCollapse={() => setLeftSidebarCollapsed(true)}
+              onOpenSettings={() => setShowSettings(true)}
+            />
+          )}
 
-        {/* Center Canvas */}
-        <div className="flex-1 flex flex-col">
-          <header className="h-14 bg-white border-b border-gray-200 flex items-center px-6">
-            <div className="flex items-center gap-3">
-              <div className="w-2 h-2 rounded-full bg-[#007AFF]"></div>
-              <h1 className="tracking-tight text-gray-900">Designthinking Agent Pro</h1>
-              <span className="text-sm text-gray-500">/ 小钳智能双极电刀 V2</span>
-            </div>
-          </header>
-          
-          <NodeCanvas 
-            selectedNode={selectedNode} 
-            onSelectNode={setSelectedNode}
-            leftSidebarCollapsed={leftSidebarCollapsed}
-            onExpandLeftSidebar={() => setLeftSidebarCollapsed(false)}
-            rightSidebarCollapsed={rightSidebarCollapsed}
-            onExpandRightSidebar={() => setRightSidebarCollapsed(false)}
-            taskStats={taskCompletionStats}
-          />
+          {/* Center Canvas */}
+          <div className="flex-1 flex flex-col">
+            <header className="h-14 bg-white border-b border-gray-200 flex items-center px-6">
+              <div className="flex items-center gap-3">
+                <div className="w-2 h-2 rounded-full bg-[#007AFF]"></div>
+                <h1 className="tracking-tight text-gray-900">Designthinking Agent Pro</h1>
+                <span className="text-sm text-gray-500">/ 小钳智能双极电刀 V2</span>
+              </div>
+            </header>
+            
+            <NodeCanvas 
+              selectedNode={selectedNode} 
+              onSelectNode={setSelectedNode}
+              leftSidebarCollapsed={leftSidebarCollapsed}
+              onExpandLeftSidebar={() => setLeftSidebarCollapsed(false)}
+              rightSidebarCollapsed={rightSidebarCollapsed}
+              onExpandRightSidebar={() => setRightSidebarCollapsed(false)}
+              taskStats={taskCompletionStats}
+            />
+          </div>
+
+          {/* Right Inspector Panel */}
+          {!rightSidebarCollapsed && (
+            <InspectorPanel 
+              selectedNode={selectedNode}
+              onToggleCollapse={() => setRightSidebarCollapsed(true)}
+              scenarios={scenarios}
+              onScenariosChange={setScenarios}
+              knowledgeBase={knowledgeBase}
+              onTaskStatsChange={setTaskCompletionStats}
+              taskSequences={taskSequences}
+              onTaskSequencesChange={setTaskSequences}
+            />
+          )}
+
+          {/* Settings Modal */}
+          {showSettings && (
+            <SettingsModal
+              onClose={() => setShowSettings(false)}
+              knowledgeBase={knowledgeBase}
+              onKnowledgeBaseChange={setKnowledgeBase}
+            />
+          )}
         </div>
 
-        {/* Right Inspector Panel */}
-        {!rightSidebarCollapsed && (
-          <InspectorPanel 
-            selectedNode={selectedNode}
-            onToggleCollapse={() => setRightSidebarCollapsed(true)}
-            scenarios={scenarios}
-            onScenariosChange={setScenarios}
-            knowledgeBase={knowledgeBase}
-            onTaskStatsChange={setTaskCompletionStats}
-            taskSequences={taskSequences}
-            onTaskSequencesChange={setTaskSequences}
-          />
-        )}
-
-        {/* Settings Modal */}
-        {showSettings && (
-          <SettingsModal
-            onClose={() => setShowSettings(false)}
-            knowledgeBase={knowledgeBase}
-            onKnowledgeBaseChange={setKnowledgeBase}
-          />
-        )}
-      </div>
+        {/* 全屏方案对比视图（双击方案节点触发） */}
+        <SolutionCompareView />
+      </DesignProvider>
     </ErrorBoundary>
   );
 }

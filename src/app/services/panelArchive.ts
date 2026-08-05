@@ -91,6 +91,25 @@ export async function deletePanelState(
   if (error) throw new Error('删除存档失败: ' + error.message);
 }
 
+export interface PanelStateRow {
+  project_id: string;
+  node_id: string;
+  panel_type: PanelType;
+  data: any;
+  updated_at: string;
+}
+
+/** 加载某项目下所有节点存档（用于导出设计报告时汇总） */
+export async function loadAllPanelStates(projectId: string): Promise<PanelStateRow[]> {
+  const { data, error } = await supabase
+    .from('node_panel_data')
+    .select('project_id, node_id, panel_type, data, updated_at')
+    .eq('project_id', projectId)
+    .order('updated_at', { ascending: false });
+  if (error) throw new Error('加载存档失败: ' + error.message);
+  return (data || []) as PanelStateRow[];
+}
+
 export function usePanelArchive<T = any>(opts: UsePanelArchiveOpts): UsePanelArchiveResult<T> {
   const { projectId = 'default', nodeId, panelType, initial } = opts;
   const [data, setData] = useState<T | undefined>(initial);

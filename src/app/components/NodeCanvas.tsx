@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ChevronRight, ZoomIn, ZoomOut, Maximize2, Trash2 } from 'lucide-react';
 import { NodeData, Connection } from '../App';
+import { useDesignStore } from '../services/designStore';
 
 interface NodeCanvasProps {
   selectedNode: string | null;
@@ -65,6 +66,8 @@ export function NodeCanvas({
   const [selectedNodes, setSelectedNodes] = useState<string[]>([]);
 
   const canvasRef = useRef<HTMLDivElement>(null);
+
+  const { notifyConnection, openCompare } = useDesignStore();
 
   const getNodeColor = (type: string) => {
     const colors: Record<string, string> = {
@@ -269,15 +272,41 @@ export function NodeCanvas({
   const handlePortMouseUp = (e: React.MouseEvent, nodeId: string, port: 'input') => {
     e.stopPropagation();
     if (connectingFrom && connectingFrom.nodeId !== nodeId) {
-      const newConnection: Connection = {
-        id: `conn-${Date.now()}`,
-        from: connectingFrom.nodeId,
-        to: nodeId
-      };
-      setConnections([...connections, newConnection]);
+      const fromNode = nodes.find((n) => n.id === connectingFrom.nodeId);
+      const toNode = nodes.find((n) => n.id === nodeId);
+      if (fromNode && toNode) {
+        const newConnection: Connection = {
+          id: `conn-${Date.now()}`,
+          from: fromNode.id,
+          to: toNode.id,
+        };
+        setConnections([...connections, newConnection]);
+        // 连线成功 → 触发节点间数据自动投递（context→problem / problem→solution 等）
+        notifyConnection(fromNode.id, fromNode.type, toNode.id, toNode.type);
+      }
     }
     setConnectingFrom(null);
     setTempConnection(null);
+  };
+
+  // 拖拽到节点体内（左半区）吸附连线：松手即连到该节点输入
+  const handleNodeMouseUp = (e: React.MouseEvent, nodeId: string) => {
+    if (connectingFrom && connectingFrom.nodeId !== nodeId) {
+      e.stopPropagation();
+      const fromNode = nodes.find((n) => n.id === connectingFrom.nodeId);
+      const toNode = nodes.find((n) => n.id === nodeId);
+      if (fromNode && toNode) {
+        const newConnection: Connection = {
+          id: `conn-${Date.now()}`,
+          from: fromNode.id,
+          to: toNode.id,
+        };
+        setConnections([...connections, newConnection]);
+        notifyConnection(fromNode.id, fromNode.type, toNode.id, toNode.type);
+      }
+      setConnectingFrom(null);
+      setTempConnection(null);
+    }
   };
 
   // Handle connection deletion
@@ -577,6 +606,11 @@ export function NodeCanvas({
               border: '1.5px solid',
             }}
             onMouseDown={(e) => handleNodeMouseDown(e, node.id)}
+            onMouseUp={(e) => handleNodeMouseUp(e, node.id)}
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              if (node.type === 'solution') openCompare(node.id);
+            }}
             onClick={(e) => {
               e.stopPropagation();
               onSelectNode(node.id);
@@ -665,7 +699,8 @@ export function NodeCanvas({
 
       {/* Canvas Info */}
       <div className="absolute bottom-4 left-4 px-3 py-2 bg-white/90 backdrop-blur-sm rounded-lg border border-gray-200 text-xs text-gray-600">
-        <div>缩放: {(zoom * 100).toFixed(0)}% · 中键平移 · Ctrl+滚轮缩放 · Shift+拖动框选</div>
+        <div>缩放: {(zoom * 100).toFixed(0)}% · 中键平移 · Ctrl+滚轮缩放 · Shift+框选 · 拖端口连线 · 双击方案节点对比
+      </div>
       </div>
     </div>
   );

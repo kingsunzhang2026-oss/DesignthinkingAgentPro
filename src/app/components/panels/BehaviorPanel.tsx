@@ -25,6 +25,7 @@ export function BehaviorPanel({
   const [editingRecordPoint, setEditingRecordPoint] = useState<string | null>(null);
 
   // 22 个手部分区打分 (a-v) —— 接入 node_panel_data 存档（按当前激活的 scenarioId 分存档）
+  // 存档格式：字符串 "a-10, b-8, c-5"（区域ID-分数，逗号分隔）
   const currentSequence = taskSequences[activeTab];
   const behaviorNodeId = currentSequence
     ? `behavior-${currentSequence.scenarioId}`
@@ -33,24 +34,46 @@ export function BehaviorPanel({
     save: saveRegionScores,
     saving: savingArchive,
     lastSavedAt: regionArchivedAt,
-    data: archivedRegionScores,
+    data: archivedRegionScoreStr,
     loading: loadingArchive,
-  } = usePanelArchive<Record<string, number>>({
+  } = usePanelArchive<string>({
     projectId: 'default',
     nodeId: behaviorNodeId,
     panelType: 'behavior',
-    initial: {},
+    initial: '',
   });
+
+  // 将存档字符串解析为 { id: score } 对象
+  const parseScoreString = (str: string): Record<string, number> => {
+    if (!str.trim()) return {};
+    const result: Record<string, number> = {};
+    str.split(',').forEach((pair) => {
+      const [id, score] = pair.trim().split('-');
+      if (id && score !== undefined) {
+        const n = parseInt(score, 10);
+        if (!isNaN(n)) result[id] = n;
+      }
+    });
+    return result;
+  };
+
+  // 将 { id: score } 对象序列化为存档字符串
+  const serializeScores = (scores: Record<string, number>): string => {
+    return Object.entries(scores)
+      .filter(([, s]) => s > 0)
+      .map(([id, s]) => `${id}-${s}`)
+      .join(', ');
+  };
 
   const [regionScores, setRegionScores] = useState<Record<string, number>>({});
 
   // 加载到的存档回填到本地 state
   useEffect(() => {
-    if (!loadingArchive && archivedRegionScores && Object.keys(archivedRegionScores).length > 0) {
-      setRegionScores(archivedRegionScores);
+    if (!loadingArchive && archivedRegionScoreStr && archivedRegionScoreStr.trim().length > 0) {
+      setRegionScores(parseScoreString(archivedRegionScoreStr));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [archivedRegionScores, loadingArchive]);
+  }, [archivedRegionScoreStr, loadingArchive]);
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
   
   // New State for Task Management
@@ -517,30 +540,30 @@ export function BehaviorPanel({
     }
   };
 
-  // 22 个手部分区 (a-v，按原图位置排布；viewBox 0 0 1139 896)
+  // 22 个手部分区 (a-v，按原图位置排布；viewBox 0 0 1372 1146)
   const HAND_REGIONS: { id: string; label: string; cx: number; cy: number; polygon: string; desc: string }[] = [
-    { id: 'v',  label: '拇指尖',      cx: 145, cy: 470, polygon: '95,380 200,400 200,540 95,540',     desc: '拇指远端' },
-    { id: 'u',  label: '拇指中段',    cx: 200, cy: 470, polygon: '160,400 245,420 245,530 160,520', desc: '拇指中段（腕掌关节附近）' },
-    { id: 't',  label: '大鱼际',      cx: 345, cy: 530, polygon: '275,460 415,470 415,590 275,585', desc: '拇指根部掌侧肌肉群' },
-    { id: 'c',  label: '食指指尖',    cx: 540, cy: 105, polygon: '510,55 575,75 575,150 505,140',   desc: '食指远端' },
-    { id: 'd',  label: '食指第一节',  cx: 540, cy: 195, polygon: '505,150 575,180 565,240 505,225', desc: '食指第一指节' },
-    { id: 'h',  label: '食指第二节',  cx: 540, cy: 280, polygon: '505,235 575,250 575,320 505,320', desc: '食指第二指节' },
-    { id: 'l',  label: '食指根部',    cx: 540, cy: 360, polygon: '505,320 580,335 575,395 505,395', desc: '食指掌指关节' },
-    { id: 'p',  label: '食指根部(小鱼际侧)', cx: 525, cy: 425, polygon: '470,380 580,400 580,460 470,460', desc: '食指根部小鱼际侧' },
-    { id: 'b',  label: '中指指尖',    cx: 650, cy: 105, polygon: '625,55 685,75 685,150 620,140',   desc: '中指远端' },
-    { id: 'f',  label: '中指第一节',  cx: 650, cy: 195, polygon: '620,150 690,170 690,225 620,225', desc: '中指第一指节' },
-    { id: 'g1', label: '中指第二节',  cx: 650, cy: 280, polygon: '620,225 690,240 690,320 620,320', desc: '中指第二指节（上方g）' },
-    { id: 'k',  label: '中指根部',    cx: 660, cy: 360, polygon: '620,320 705,330 700,395 620,395', desc: '中指掌指关节' },
-    { id: 's',  label: '中指根部(掌心侧)', cx: 625, cy: 435, polygon: '545,400 705,420 705,470 545,470', desc: '中指根部掌侧' },
-    { id: 'o',  label: '无名/中指连接', cx: 650, cy: 365, polygon: '595,335 705,345 700,395 595,395', desc: '无名指与中指根连接处' },
-    { id: 'g2', label: '无名指第一节',cx: 740, cy: 195, polygon: '685,225 800,240 800,320 685,320', desc: '无名指第一/二节相邻区（下方g）' },
-    { id: 'n',  label: '无名指根部',  cx: 750, cy: 360, polygon: '700,330 805,345 805,395 700,395', desc: '无名指掌指关节' },
-    { id: 'm',  label: '无名/小指根', cx: 910, cy: 360, polygon: '870,320 955,335 955,395 870,395', desc: '无名指与小指根连接处' },
-    { id: 'a',  label: '小指指尖',    cx: 900, cy: 105, polygon: '875,55 935,75 935,150 870,140',   desc: '小指远端' },
-    { id: 'e',  label: '小指第一节',  cx: 900, cy: 195, polygon: '870,150 940,170 940,225 870,225', desc: '小指第一指节' },
-    { id: 'i',  label: '小指第二节',  cx: 905, cy: 280, polygon: '870,225 945,240 945,320 870,320', desc: '小指第二指节' },
-    { id: 'q',  label: '小指根(小鱼际)', cx: 830, cy: 435, polygon: '740,395 925,415 925,470 740,470', desc: '小指根部小鱼际' },
-    { id: 'r',  label: '掌心中央',    cx: 600, cy: 530, polygon: '430,470 770,490 770,580 430,580', desc: '掌心中央' },
+    { id: 'c',  label: '食指指尖',    cx: 680,  cy: 100,  polygon: '640,30 720,30 720,160 640,160',     desc: '食指远端' },
+    { id: 'b',  label: '中指指尖',    cx: 845,  cy: 120,  polygon: '800,50 890,50 890,170 800,170',     desc: '中指远端' },
+    { id: 'a',  label: '小指指尖',    cx: 1020, cy: 200,  polygon: '970,170 1070,170 1070,290 970,290',   desc: '小指远端' },
+    { id: 'd',  label: '食指第一指节',cx: 565,  cy: 220,  polygon: '510,140 620,140 620,250 510,250',     desc: '食指第一指节' },
+    { id: 'g',  label: '中指第二指节', cx: 850,  cy: 240,  polygon: '800,160 900,160 900,280 800,280',   desc: '中指第二指节' },
+    { id: 'f',  label: '中指第一指节', cx: 865,  cy: 340,  polygon: '810,260 920,260 920,390 810,390',   desc: '中指第一指节' },
+    { id: 'h',  label: '食指第二指节', cx: 560,  cy: 360,  polygon: '500,230 620,230 620,350 500,350',     desc: '食指第二指节' },
+    { id: 'k',  label: '中指第二指节延伸', cx: 815, cy: 420,  polygon: '750,260 880,260 880,400 750,400',   desc: '中指根部与掌心交界' },
+    { id: 'j',  label: '中指根部',    cx: 855,  cy: 460,  polygon: '810,370 920,370 920,490 810,490',     desc: '中指掌指关节' },
+    { id: 'e',  label: '小指第一指节', cx: 1030, cy: 380,  polygon: '980,270 1080,270 1080,410 980,410',  desc: '小指第一指节' },
+    { id: 'i',  label: '小指第二指节', cx: 995,  cy: 500,  polygon: '960,390 1060,390 1060,530 960,530',   desc: '小指第二指节' },
+    { id: 'l',  label: '食指根部',    cx: 545,  cy: 500,  polygon: '490,330 600,330 600,450 490,450',     desc: '食指掌指关节' },
+    { id: 'p',  label: '食指根部小鱼际侧', cx: 515, cy: 560,  polygon: '460,430 570,430 570,560 460,560',   desc: '食指根部小鱼际侧' },
+    { id: 'm',  label: '无名指根部',  cx: 1040, cy: 600,  polygon: '960,500 1080,500 1080,640 960,640',   desc: '无名指掌指关节' },
+    { id: 'o',  label: '无名/中指连接', cx: 700,  cy: 520,  polygon: '630,430 760,430 760,560 630,560',     desc: '无名指与中指根连接处' },
+    { id: 'n',  label: '掌心中央偏上', cx: 815,  cy: 570,  polygon: '740,490 880,490 880,630 740,630',     desc: '掌心中央偏上' },
+    { id: 's',  label: '中指根掌心侧', cx: 605,  cy: 650,  polygon: '530,530 680,530 680,680 530,680',     desc: '中指根部掌侧' },
+    { id: 'r',  label: '掌心中央大块', cx: 795,  cy: 780,  polygon: '660,600 920,600 920,880 660,880',     desc: '掌心中央' },
+    { id: 'q',  label: '小指根小鱼际', cx: 1040, cy: 820,  polygon: '950,680 1120,680 1120,900 950,900',   desc: '小指根部小鱼际' },
+    { id: 'v',  label: '拇指尖',      cx: 250,  cy: 590,  polygon: '180,520 320,520 320,660 180,660',     desc: '拇指远端' },
+    { id: 'u',  label: '拇指中段',    cx: 345,  cy: 680,  polygon: '270,600 420,600 420,760 270,760',     desc: '拇指中段' },
+    { id: 't',  label: '大鱼际',      cx: 430,  cy: 905,  polygon: '330,760 530,760 530,1050 330,1050',   desc: '拇指根部掌侧肌肉群' },
   ];
 
   // 0-10 打分 → 颜色（0 透明，10 深红；蓝→黄→红渐变）
@@ -786,8 +809,8 @@ export function BehaviorPanel({
           </div>
           <div className="flex-shrink-0 pl-3 pr-3 py-2 border-l border-gray-200 bg-white">
             <ArchiveButton
-              data={regionScores}
-              onSave={saveRegionScores}
+              data={serializeScores(regionScores)}
+              onSave={() => saveRegionScores(serializeScores(regionScores))}
               saving={savingArchive}
               lastSavedAt={regionArchivedAt}
               label="存档"
@@ -1058,9 +1081,9 @@ export function BehaviorPanel({
           </div>
 
           <div className="relative w-full max-w-md mx-auto bg-white rounded-lg border border-gray-200">
-            <svg viewBox="0 0 980 896" className="w-full h-auto">
-              {/* 原图作为底图（裁掉右边图例区域，只保留手部）*/}
-              <image href="/hand-anatomy.png" x="0" y="0" width="1139" height="896" preserveAspectRatio="xMinYMin slice" />
+            <svg viewBox="0 0 1372 1146" className="w-full h-auto">
+              {/* 原图作为底图（完整显示，无裁剪）*/}
+              <image href="/hand-anatomy.png" x="0" y="0" width="1372" height="1146" preserveAspectRatio="xMidYMid meet" />
               {/* 22 个分区 hit area */}
               {HAND_REGIONS.map((r) => {
                 const score = regionScores[r.id] || 0;

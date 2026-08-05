@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { TrendingUp, Percent } from 'lucide-react';
+import { usePanelArchive } from '../../services/panelArchive';
+import { ArchiveButton } from '../ArchiveButton';
 
 export function ValueNodePanel() {
   const [roiMetrics, setRoiMetrics] = useState([
@@ -10,6 +12,21 @@ export function ValueNodePanel() {
 
   const [editingMetric, setEditingMetric] = useState<string | null>(null);
 
+  // ---- 存档 ----
+  const {
+    data: valArchived, save: saveVal, saving: valSaving,
+    lastSavedAt: valSavedAt, loading: valLoading,
+  } = usePanelArchive({
+    projectId: 'default', nodeId: 'value', panelType: 'value',
+    initial: { roiMetrics },
+  });
+  useEffect(() => {
+    if (!valLoading && valArchived?.roiMetrics) {
+      setRoiMetrics(valArchived.roiMetrics);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [valArchived, valLoading]);
+
   const updateWeight = (id: string, weight: number) => {
     setRoiMetrics(roiMetrics.map(m => 
       m.id === id ? { ...m, weight } : m
@@ -19,7 +36,19 @@ export function ValueNodePanel() {
   const totalWeight = roiMetrics.reduce((sum, m) => sum + m.weight, 0);
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="flex flex-col h-full">
+      {/* 顶部存档栏 */}
+      <div className="border-b border-gray-200 bg-gray-50 px-6 py-2 flex items-center justify-between">
+        <span className="text-xs text-gray-500">价值节点</span>
+        <ArchiveButton
+          data={{ roiMetrics }}
+          onSave={() => saveVal({ roiMetrics })}
+          saving={valSaving}
+          lastSavedAt={valSavedAt}
+        />
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-6 space-y-6">
       <div>
         <h3 className="text-sm text-gray-900 mb-2">价值节点</h3>
         <p className="text-xs text-gray-600 mb-4">
@@ -123,6 +152,7 @@ export function ValueNodePanel() {
           基于设定的权重和预期值自动计算综合评分
         </p>
       </div>
+    </div>
     </div>
   );
 }
