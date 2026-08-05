@@ -96,7 +96,7 @@ export function InspectorPanel({
             taskSequences={taskSequences}
           />
         )}
-        {nodeType === 'problem' && <ProblemNodePanel />}
+        {nodeType === 'problem' && <ProblemNodePanel nodeId={selectedNode} />}
         {nodeType === 'solution' && <SolutionNodePanel nodeId={selectedNode} />}
         {nodeType === 'value' && <ValueNodePanel />}
       </div>

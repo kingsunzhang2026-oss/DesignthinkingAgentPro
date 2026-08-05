@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Upload, X, File, Box, Image as ImageIcon, Loader2, Sparkles, Trash2, Download, Eye, AlertCircle } from 'lucide-react';
+import { Upload, X, File, Box, Image as ImageIcon, Loader2, Sparkles, Trash2, Download, Eye, AlertCircle, FileDown } from 'lucide-react';
 import { ModelViewer } from '../ModelViewer';
+import { supabase } from '../../utils/supabase/client';
 import {
   generateModel,
   pollUntilDone,
@@ -63,8 +64,11 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
 
   // ---- 生成相关 ----
   const [genMode, setGenMode] = useState<TripoMode>('text_to_model');
-  const [tier, setTier] = useState<TripoTier>('H');
+  const [tier, setTier] = useState<TripoTier>('P'); // 默认低多边形
   const [prompt, setPrompt] = useState('');
+  const [problemPrompts, setProblemPrompts] = useState<{ node_id: string; data: any; updated_at: string }[]>([]);
+  const [showImportDialog, setShowImportDialog] = useState(false);
+  const [importLoading, setImportLoading] = useState(false);
   const [singleImage, setSingleImage] = useState<File | null>(null);
   const [singlePreview, setSinglePreview] = useState<string>('');
   const [multiview, setMultiview] = useState<Record<string, File | null>>({
@@ -294,13 +298,85 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
 
         {/* 各模式输入 */}
         {genMode === 'text_to_model' && (
-          <textarea
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            rows={3}
-            className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-[#FFB84D]"
-            placeholder="例如：小钳智能双极电刀 V2 的握把与钳头，符合人体工程学"
-          />
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <button
+                onClick={async () => {
+                  setShowImportDialog(true);
+                  setImportLoading(true);
+                  try {
+                    const { data, error } = await supabase
+                      .from('node_panel_data')
+                      .select('node_id, data, updated_at')
+                      .eq('panel_type', 'problem')
+                      .order('updated_at', { ascending: false });
+                    if (!error && data) setProblemPrompts(data);
+                  } catch (e) {
+                    console.error('加载问题节点存档失败', e);
+                  } finally {
+                    setImportLoading(false);
+                  }
+                }}
+                className="flex items-center gap-1 px-2 py-1 text-xs text-[#FF9500] border border-[#FF9500] rounded hover:bg-orange-50"
+              >
+                <FileDown className="w-3 h-3" />
+                从问题节点导入
+              </button>
+              {prompt && (
+                <span className="text-[10px] text-gray-400">已填入提示词（{prompt.length} 字）</span>
+              )}
+            </div>
+            <textarea
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              rows={3}
+              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-[#FFB84D]"
+              placeholder="例如：小钳智能双极电刀 V2 的握把与钳头，符合人体工程学"
+            />
+            {/* 导入对话框 */}
+            {showImportDialog && (
+              <div className="mt-2 border border-[#FF9500] rounded-lg p-3 bg-orange-50/60 max-h-60 overflow-y-auto">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs text-gray-700">选择问题节点的提示词导入：</span>
+                  <button onClick={() => setShowImportDialog(false)} className="text-xs text-gray-400 hover:text-gray-700">✕</button>
+                </div>
+                {importLoading ? (
+                  <p className="text-xs text-gray-500 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> 加载中…</p>
+                ) : problemPrompts.length === 0 ? (
+                  <p className="text-xs text-gray-400">暂无问题节点存档。请先在问题节点中生成并存档提示词。</p>
+                ) : (
+                  <div className="space-y-2">
+                    {problemPrompts.map((p) => (
+                      <button
+                        key={p.node_id}
+                        onClick={() => {
+                          const pp = p.data?.generatedPrompt || '';
+                          if (pp) {
+                            setPrompt(pp);
+                            setShowImportDialog(false);
+                          } else {
+                            alert('该问题节点尚未生成提示词');
+                          }
+                        }}
+                        className="w-full text-left p-2 bg-white border border-gray-200 rounded hover:border-[#FF9500] transition-colors"
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-medium text-gray-700">{p.node_id}</span>
+                          <span className="text-[10px] text-gray-400">{new Date(p.updated_at).toLocaleString('zh-CN', { hour12: false })}</span>
+                        </div>
+                        <p className="text-[11px] text-gray-500 line-clamp-2">
+                          {p.data?.generatedPrompt ? p.data.generatedPrompt.substring(0, 120) + '…' : '（未生成提示词）'}
+                        </p>
+                        {p.data?.goals?.length > 0 && (
+                          <p className="text-[10px] text-gray-400 mt-1">{p.data.goals.length} 个设计目标</p>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         )}
 
         {genMode === 'image_to_model' && (
