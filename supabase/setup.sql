@@ -50,6 +50,19 @@ create table if not exists generated_models (
   created_at   timestamptz default now()
 );
 
+-- 5) node_panel_data（节点面板存档：刷新不丢失）
+--    通用 KV：key = (project_id, node_id, panel_type)
+--    panel_type: behavior | problem | solution | alignment | context | value
+create table if not exists node_panel_data (
+  id          uuid primary key default gen_random_uuid(),
+  project_id  text not null default 'default',
+  node_id     text not null,
+  panel_type  text not null,
+  data        jsonb not null,
+  updated_at  timestamptz default now(),
+  unique (project_id, node_id, panel_type)
+);
+
 -- 3 个 Storage bucket（public，便于前端直接读取 GLB / 下载文档）
 insert into storage.buckets (id, name, public)
 values
@@ -76,6 +89,9 @@ create policy anon_prototype_all  on prototype_assets for all to anon using (tru
 
 drop policy if exists anon_generated_all  on generated_models;
 create policy anon_generated_all  on generated_models for all to anon using (true) with check (true);
+
+drop policy if exists anon_panel_data_all on node_panel_data;
+create policy anon_panel_data_all on node_panel_data for all to anon using (true) with check (true);
 
 -- Storage objects 宽松 RLS
 drop policy if exists anon_storage_all on storage.objects;

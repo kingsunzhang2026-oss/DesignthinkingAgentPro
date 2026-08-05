@@ -4,6 +4,8 @@ import { ScenarioData, TaskSequence, Task, RecordPoint } from '../../App';
 import { generateExtendedTask } from '../../services/aiScenarios';
 import { supabase } from '../../utils/supabase/client';
 import { projectId, publicAnonKey } from '../../utils/supabase/info';
+import { usePanelArchive } from '../../services/panelArchive';
+import { ArchiveButton } from '../ArchiveButton';
 
 interface BehaviorPanelProps {
   scenarios: ScenarioData[];
@@ -22,8 +24,33 @@ export function BehaviorPanel({
   // taskSequences state is now managed by parent
   const [editingRecordPoint, setEditingRecordPoint] = useState<string | null>(null);
 
-  // 22 个手部分区打分 (a-v)
+  // 22 个手部分区打分 (a-v) —— 接入 node_panel_data 存档（按当前激活的 scenarioId 分存档）
+  const currentSequence = taskSequences[activeTab];
+  const behaviorNodeId = currentSequence
+    ? `behavior-${currentSequence.scenarioId}`
+    : 'behavior-default';
+  const {
+    save: saveRegionScores,
+    saving: savingArchive,
+    lastSavedAt: regionArchivedAt,
+    data: archivedRegionScores,
+    loading: loadingArchive,
+  } = usePanelArchive<Record<string, number>>({
+    projectId: 'default',
+    nodeId: behaviorNodeId,
+    panelType: 'behavior',
+    initial: {},
+  });
+
   const [regionScores, setRegionScores] = useState<Record<string, number>>({});
+
+  // 加载到的存档回填到本地 state
+  useEffect(() => {
+    if (!loadingArchive && archivedRegionScores && Object.keys(archivedRegionScores).length > 0) {
+      setRegionScores(archivedRegionScores);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [archivedRegionScores, loadingArchive]);
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
   
   // New State for Task Management
@@ -576,8 +603,6 @@ export function BehaviorPanel({
     }));
   }, [taskSequences]);
 
-  const currentSequence = taskSequences[activeTab];
-
   const [isUploading, setIsUploading] = useState(false);
   const [user, setUser] = useState<any>(null);
 
@@ -1014,11 +1039,15 @@ export function BehaviorPanel({
 
         {/* Hand Anatomy Heatmap (a-v 共 22 区，0-10 打分) */}
         <div className="border border-gray-200 rounded-lg p-4 bg-white">
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
             <h3 className="text-sm text-gray-700">手部解剖热力图 <span className="text-xs text-gray-400">(a-v 共 22 区)</span></h3>
-            <div className="text-[10px] text-gray-400">
-              已打分 {Object.values(regionScores).filter((s) => s > 0).length} / 22
-            </div>
+            <ArchiveButton
+              data={regionScores}
+              onSave={saveRegionScores}
+              saving={savingArchive}
+              lastSavedAt={regionArchivedAt}
+              label="存档"
+            />
           </div>
           <p className="text-xs text-gray-600 mb-3">
             点击分区录入 0-10 不舒适度（参照 IH vs OH/SH 对比研究）
