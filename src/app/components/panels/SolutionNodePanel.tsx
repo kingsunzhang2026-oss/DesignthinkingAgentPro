@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Upload, X, File, Box, Image as ImageIcon, Loader2, Sparkles, Trash2,
-  Download, Eye, AlertCircle, Layers, Maximize2,
+  Download, Eye, AlertCircle, Layers, Maximize2, Mic, Square
 } from 'lucide-react';
 import { ModelViewer } from '../ModelViewer';
 import {
@@ -15,6 +15,7 @@ import {
 import { usePanelArchive } from '../../services/panelArchive';
 import { ArchiveButton } from '../ArchiveButton';
 import { useDesignStore } from '../../services/designStore';
+import { useAudioRecorder } from '../../hooks/useAudioRecorder';
 
 interface SolutionNodePanelProps {
   nodeId: string;
@@ -76,6 +77,7 @@ function seedPrompt(base: string, idx: number): string {
 }
 
 export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
+  const { isRecording, startRecording, stopRecording } = useAudioRecorder();
   const { useDelivery, openCompare } = useDesignStore();
   const delivery = useDelivery(nodeId);
 
@@ -357,7 +359,24 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
 
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
         <div>
-          <h3 className="text-sm text-gray-900 mb-1">方案节点</h3>
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm text-gray-900">方案节点</h3>
+            <button
+              onClick={() => isRecording ? stopRecording() : startRecording()}
+              className={`flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded transition-all ${
+                isRecording
+                  ? 'bg-red-100 text-red-700 animate-pulse border border-red-200 shadow-sm'
+                  : 'bg-[#007AFF]/10 text-[#007AFF] hover:bg-[#007AFF]/20'
+              }`}
+              title="用于在构思方案时收集口语报告记录"
+            >
+              {isRecording ? (
+                <><Square className="w-3 h-3 fill-current" /> 停止报告</>
+              ) : (
+                <><Mic className="w-3 h-3" /> 出声报告</>
+              )}
+            </button>
+          </div>
           <p className="text-xs text-gray-600 mb-4">
             通过 Tripo3D 生成 3D 原型；支持 1/3/5 个复合方案，可并发或顺序生成后全屏对比
           </p>

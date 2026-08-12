@@ -79,6 +79,9 @@ app.post('/make-server-5590af4c/submit-record', async (c) => {
         return c.text(`Unauthorized: ${error?.message || 'Invalid Token'}`, 401);
     }
 
+    // Get business project ID or fallback to default
+    const businessProjectId = body.businessProjectId || 'forceps-v2';
+
     // Support both single submission (legacy) and batch submission (new)
     let sequences = [];
     if (body.allSequences && Array.isArray(body.allSequences)) {
@@ -98,11 +101,13 @@ app.post('/make-server-5590af4c/submit-record', async (c) => {
     
     const savePromises = sequences.map(async (seq: any) => {
         const submissionId = crypto.randomUUID();
-        const key = `submission:${user.id}:${seq.scenarioId}:${timestamp}`;
+        // Add businessProjectId to the KV key for data isolation
+        const key = `submission:${businessProjectId}:${user.id}:${seq.scenarioId}:${timestamp}`;
         
         const record = {
             id: submissionId,
             batchId: batchId,
+            businessProjectId: businessProjectId,
             userId: user.id,
             userEmail: user.email,
             scenarioId: seq.scenarioId,
@@ -116,8 +121,8 @@ app.post('/make-server-5590af4c/submit-record', async (c) => {
 
     await Promise.all(savePromises);
 
-    // Calculate total count for this user (for feedback)
-    const prefix = `submission:${user.id}:`;
+    // Calculate total count for this user in this specific project
+    const prefix = `submission:${businessProjectId}:${user.id}:`;
     const allUserRecords = await kv.getByPrefix(prefix);
     const totalCount = allUserRecords.length;
 
@@ -173,11 +178,12 @@ app.post('/make-server-5590af4c/export/my-records', async (c) => {
     try {
         const body = await c.req.json();
         const token = body.access_token;
+        const businessProjectId = body.businessProjectId || 'forceps-v2';
 
         const { user, error } = await verifyUserToken(token);
         if (error || !user) return c.text(`Unauthorized: ${error?.message}`, 401);
 
-        const prefix = `submission:${user.id}:`;
+        const prefix = `submission:${businessProjectId}:${user.id}:`;
         const records = await kv.getByPrefix(prefix);
         const validRecords = records.filter(r => r !== null);
         
@@ -186,7 +192,7 @@ app.post('/make-server-5590af4c/export/my-records', async (c) => {
         return new Response(csvData, {
             headers: {
                 'Content-Type': 'text/csv; charset=utf-8',
-                'Content-Disposition': `attachment; filename="my_records_${user.id.substring(0,8)}.csv"`
+                'Content-Disposition': `attachment; filename="${businessProjectId}_my_records_${user.id.substring(0,8)}.csv"`
             }
         });
 
@@ -202,6 +208,7 @@ app.post('/make-server-5590af4c/export/all-records', async (c) => {
     try {
         const body = await c.req.json();
         const token = body.access_token;
+        const businessProjectId = body.businessProjectId || 'forceps-v2';
 
         const { user, error } = await verifyUserToken(token);
         if (error || !user) return c.text(`Unauthorized: ${error?.message}`, 401);
@@ -209,7 +216,7 @@ app.post('/make-server-5590af4c/export/all-records', async (c) => {
         // Basic check, in real scenario check role
         // if (user.email !== 'admin@make.com') ...
 
-        const prefix = `submission:`;
+        const prefix = `submission:${businessProjectId}:`;
         const allRecords = await kv.getByPrefix(prefix);
         const validRecords = allRecords.filter(r => r !== null);
 
@@ -218,7 +225,7 @@ app.post('/make-server-5590af4c/export/all-records', async (c) => {
         return new Response(csvData, {
             headers: {
                 'Content-Type': 'text/csv; charset=utf-8',
-                'Content-Disposition': `attachment; filename="all_participants_data_${Date.now()}.csv"`
+                'Content-Disposition': `attachment; filename="${businessProjectId}_all_participants_data_${Date.now()}.csv"`
             }
         });
 

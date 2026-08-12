@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Plus, X, Sparkles, FileText, Loader2, Copy, Check, AlertCircle, Upload } from 'lucide-react';
+import { Plus, X, Sparkles, FileText, Loader2, Copy, Check, AlertCircle, Upload, Mic, Square } from 'lucide-react';
 import { callLLM } from '../../services/llm';
 import { usePanelArchive } from '../../services/panelArchive';
 import { ArchiveButton } from '../ArchiveButton';
 import { useDesignStore } from '../../services/designStore';
+import { useAudioRecorder } from '../../hooks/useAudioRecorder';
 
 interface ProblemNodePanelProps {
   nodeId: string;
@@ -30,6 +31,7 @@ const MAX_GOALS = 20;
 const MIN_GOALS = 2;
 
 export function ProblemNodePanel({ nodeId }: ProblemNodePanelProps) {
+  const { isRecording, startRecording, stopRecording } = useAudioRecorder();
   const { data: archived, save, saving, lastSavedAt, loading } = usePanelArchive<ProblemPanelData>({
     projectId: 'default',
     nodeId,
@@ -224,7 +226,24 @@ ${sorted.map((g, i) => `${i + 1}. [${g.priority}] ${g.title} — ${g.description
 
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
         <div>
-          <h3 className="text-sm text-gray-900 mb-1">问题节点</h3>
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm text-gray-900">问题节点</h3>
+            <button
+              onClick={() => isRecording ? stopRecording() : startRecording()}
+              className={`flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded transition-all ${
+                isRecording
+                  ? 'bg-red-100 text-red-700 animate-pulse border border-red-200 shadow-sm'
+                  : 'bg-[#007AFF]/10 text-[#007AFF] hover:bg-[#007AFF]/20'
+              }`}
+              title="用于在定义问题时收集口语报告记录"
+            >
+              {isRecording ? (
+                <><Square className="w-3 h-3 fill-current" /> 停止报告</>
+              ) : (
+                <><Mic className="w-3 h-3" /> 出声报告</>
+              )}
+            </button>
+          </div>
           <p className="text-xs text-gray-600 mb-4">
             定义 {MIN_GOALS}-{MAX_GOALS} 个设计目标，可手动添加或上传文档由 AI 自动拆解
           </p>

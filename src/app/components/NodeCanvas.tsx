@@ -4,6 +4,10 @@ import { NodeData, Connection } from '../App';
 import { useDesignStore } from '../services/designStore';
 
 interface NodeCanvasProps {
+  nodes: NodeData[];
+  setNodes: React.Dispatch<React.SetStateAction<NodeData[]>>;
+  connections: Connection[];
+  setConnections: React.Dispatch<React.SetStateAction<Connection[]>>;
   selectedNode: string | null;
   onSelectNode: (nodeId: string) => void;
   leftSidebarCollapsed: boolean;
@@ -14,6 +18,10 @@ interface NodeCanvasProps {
 }
 
 export function NodeCanvas({ 
+  nodes,
+  setNodes,
+  connections,
+  setConnections,
   selectedNode, 
   onSelectNode, 
   leftSidebarCollapsed, 
@@ -22,38 +30,6 @@ export function NodeCanvas({
   onExpandRightSidebar,
   taskStats
 }: NodeCanvasProps) {
-  const [nodes, setNodes] = useState<NodeData[]>([
-    { 
-      id: 'context', 
-      type: 'context',
-      label: '情境扩展', 
-      shortLabel: 'C',
-      position: { x: 100, y: 200 },
-      status: 'validated'
-    },
-    { 
-      id: 'behavior', 
-      type: 'behavior',
-      label: '行为SOP', 
-      shortLabel: 'B1',
-      position: { x: 380, y: 200 },
-      status: 'active'
-    },
-    { 
-      id: 'alignment', 
-      type: 'alignment',
-      label: '人机对齐报告', 
-      shortLabel: 'B2',
-      position: { x: 660, y: 200 },
-      status: 'pending'
-    }
-  ]);
-
-  const [connections, setConnections] = useState<Connection[]>([
-    { id: 'conn-1', from: 'context', to: 'behavior' },
-    { id: 'conn-2', from: 'behavior', to: 'alignment' }
-  ]);
-
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);

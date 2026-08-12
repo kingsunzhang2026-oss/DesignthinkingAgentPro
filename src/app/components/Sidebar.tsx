@@ -2,13 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { Folder, Settings, ChevronLeft, Box, HelpCircle, Lightbulb, TrendingUp, LogIn, LogOut, User } from 'lucide-react';
 import { LoginModal } from './LoginModal';
 import { supabase } from '../utils/supabase/client';
+import { PROJECTS } from '../config/projects';
 
 interface SidebarProps {
+  activeProjectId: string;
+  onProjectChange: (id: string) => void;
   onToggleCollapse: () => void;
   onOpenSettings: () => void;
 }
 
-export function Sidebar({ onToggleCollapse, onOpenSettings }: SidebarProps) {
+export function Sidebar({ activeProjectId, onProjectChange, onToggleCollapse, onOpenSettings }: SidebarProps) {
   const [draggedNode, setDraggedNode] = useState<string | null>(null);
   const [showLogin, setShowLogin] = useState(false);
   const [user, setUser] = useState<any>(null);
@@ -64,27 +67,27 @@ export function Sidebar({ onToggleCollapse, onOpenSettings }: SidebarProps) {
       
       {/* Projects */}
       <nav className="p-3 space-y-1 border-b border-gray-200">
-        <div className="px-3 py-2 rounded-lg bg-[#007AFF]/10 border border-[#007AFF]/20">
-          <div className="flex items-center gap-2 mb-1">
-            <Folder className="w-4 h-4 text-[#007AFF]" />
-            <span className="text-sm text-gray-900">小钳智能双极电刀 V2</span>
+        {PROJECTS.map(project => (
+          <div 
+            key={project.id}
+            onClick={() => onProjectChange(project.id)}
+            className={`px-3 py-2 rounded-lg cursor-pointer transition-colors ${
+              activeProjectId === project.id 
+                ? 'bg-[#007AFF]/10 border border-[#007AFF]/20' 
+                : 'hover:bg-gray-50 opacity-60'
+            }`}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <Folder className={`w-4 h-4 ${activeProjectId === project.id ? 'text-[#007AFF]' : 'text-gray-400'}`} />
+              <span className={`text-sm ${activeProjectId === project.id ? 'text-gray-900' : 'text-gray-600'}`}>
+                {project.name} {project.version}
+              </span>
+            </div>
+            {activeProjectId === project.id && (
+              <span className="text-xs text-gray-500 ml-6">当前项目</span>
+            )}
           </div>
-          <span className="text-xs text-gray-500 ml-6">当前项目</span>
-        </div>
-
-        <div className="px-3 py-2 rounded-lg hover:bg-gray-50 cursor-pointer opacity-60">
-          <div className="flex items-center gap-2">
-            <Folder className="w-4 h-4 text-gray-400" />
-            <span className="text-sm text-gray-600">腔镜剪 V1</span>
-          </div>
-        </div>
-
-        <div className="px-3 py-2 rounded-lg hover:bg-gray-50 cursor-pointer opacity-60">
-          <div className="flex items-center gap-2">
-            <Folder className="w-4 h-4 text-gray-400" />
-            <span className="text-sm text-gray-600">持针器原型</span>
-          </div>
-        </div>
+        ))}
       </nav>
 
       {/* Node Library */}

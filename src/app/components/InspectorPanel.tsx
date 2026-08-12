@@ -9,17 +9,19 @@ import { ChevronRight } from 'lucide-react';
 import { ScenarioData, TaskSequence } from '../App';
 
 interface InspectorPanelProps {
+  activeProjectId: string;
   selectedNode: string | null;
   onToggleCollapse: () => void;
-  scenarios: ScenarioData[];
-  onScenariosChange: (scenarios: ScenarioData[]) => void;
+  scenarios: any[];
+  onScenariosChange: (scenarios: any[]) => void;
   knowledgeBase: any[];
   onTaskStatsChange: (stats: any) => void;
-  taskSequences: TaskSequence[];
-  onTaskSequencesChange: (sequences: TaskSequence[]) => void;
+  taskSequences: any[];
+  onTaskSequencesChange: (sequences: any[]) => void;
 }
 
 export function InspectorPanel({ 
+  activeProjectId,
   selectedNode, 
   onToggleCollapse, 
   scenarios, 
@@ -53,6 +55,8 @@ export function InspectorPanel({
 
   const nodeType = getNodeType(selectedNode);
 
+  const activeKnowledgeBase = knowledgeBase.filter(doc => !doc.projectId || doc.projectId === activeProjectId);
+
   return (
     <div className="w-[480px] bg-white border-l border-gray-200 flex flex-col overflow-hidden">
       {/* Panel Header */}
@@ -73,11 +77,12 @@ export function InspectorPanel({
           <ContextPanel 
             scenarios={scenarios}
             onScenariosChange={onScenariosChange}
-            knowledgeBase={knowledgeBase}
+            knowledgeBase={activeKnowledgeBase}
           />
         )}
         {nodeType === 'behavior' && (
           <BehaviorPanel 
+            activeProjectId={activeProjectId}
             scenarios={scenarios}
             onTaskStatsChange={onTaskStatsChange}
             taskSequences={taskSequences}
@@ -92,12 +97,12 @@ export function InspectorPanel({
                 alignment: { analyzed: true, deviations }
               }));
             }}
-            knowledgeBase={knowledgeBase}
+            knowledgeBase={activeKnowledgeBase}
             taskSequences={taskSequences}
           />
         )}
-        {nodeType === 'problem' && <ProblemNodePanel nodeId={selectedNode} />}
-        {nodeType === 'solution' && <SolutionNodePanel nodeId={selectedNode} />}
+        {nodeType === 'problem' && <ProblemNodePanel />}
+        {nodeType === 'solution' && <SolutionNodePanel />}
         {nodeType === 'value' && <ValueNodePanel />}
       </div>
     </div>

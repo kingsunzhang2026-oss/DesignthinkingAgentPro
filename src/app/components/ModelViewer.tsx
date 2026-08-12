@@ -20,6 +20,15 @@ export function ModelViewer({ src, poster, alt, height = 360 }: ModelViewerProps
 
   useEffect(() => {
     setFailed(false);
+    
+    // Inject script if not present
+    if (!document.querySelector('script[src*="model-viewer"]')) {
+      const script = document.createElement('script');
+      script.type = 'module';
+      script.src = 'https://unpkg.com/@google/model-viewer@4.3.1/dist/model-viewer.min.js';
+      document.head.appendChild(script);
+    }
+
     if (customElements.get('model-viewer')) {
       setReady(true);
       return;
