@@ -1,9 +1,71 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Smartphone, Circle, Save, Plus, Trash2, Sparkles, AlertTriangle, FileText, CloudUpload, Download, Users, Loader2, Mic, Square } from 'lucide-react';
-import { ScenarioData, TaskSequence, Task, RecordPoint } from '../../App';
+import { ScenarioData, TaskSequence, Task, RecordPoint, BranchCard } from '../../App';
 import { generateExtendedTask } from '../../services/aiScenarios';
 import { supabase } from '../../utils/supabase/client';
 import { projectId, publicAnonKey } from '../../utils/supabase/info';
+
+// 23 个手部解剖分区（与 /public/hand-anatomy.png 中 a-v 标注一一对应）
+// 坐标系：viewBox 0 0 582 720（图片实际像素 582×720）
+// 手指顺序：拇指 / 食指 / 中指 / 无名指 / 小指
+// 手指三段：远节指间(DIP) / 近侧指间(PIP) / 掌指(MCP)；加掌心区和大鱼际/小鱼际
+interface HandRegion {
+  id: string;          // 图中字母 a-v
+  finger: string;      // 所属手指
+  section: string;     // 解剖节段
+  label: string;       // 中文全称
+  points: string;      // SVG polygon points（覆盖分区）
+  centerX: number;     // 分数标签中心 x
+  centerY: number;     // 分数标签中心 y
+}
+
+const HAND_REGIONS: HandRegion[] = [
+  // 食指（最左长指）
+  { id: 'd', finger: '食指', section: '远节', label: '食指 DIP（远节指间）', points: '258,30 295,30 295,82 258,82', centerX: 276, centerY: 56 },
+  { id: 'h', finger: '食指', section: '中节', label: '食指 PIP（中节指间）', points: '258,82 295,82 295,182 258,182', centerX: 276, centerY: 132 },
+  { id: 'l', finger: '食指', section: '近节', label: '食指近节指骨', points: '258,182 295,182 295,278 258,278', centerX: 276, centerY: 230 },
+  { id: 'p', finger: '食指', section: '掌指', label: '食指掌指关节区', points: '220,278 295,278 295,348 220,348', centerX: 257, centerY: 313 },
+  // 中指（中间）
+  { id: 'c', finger: '中指', section: '远节', label: '中指 DIP（远节）', points: '330,12 380,12 380,90 330,90', centerX: 355, centerY: 51 },
+  { id: 'g', finger: '中指', section: '中节', label: '中指 PIP（中节）', points: '330,90 380,90 380,202 330,202', centerX: 355, centerY: 146 },
+  { id: 'k', finger: '中指', section: '近节', label: '中指近节', points: '325,202 380,202 380,290 325,290', centerX: 352, centerY: 246 },
+  { id: 'o', finger: '中指', section: '掌指', label: '中指掌指关节区', points: '305,290 380,290 380,362 305,362', centerX: 342, centerY: 326 },
+  // 无名指
+  { id: 'b', finger: '无名指', section: '远节', label: '无名指 DIP', points: '415,35 460,35 460,115 415,115', centerX: 437, centerY: 75 },
+  { id: 'f', finger: '无名指', section: '中节', label: '无名指 PIP', points: '415,115 460,115 460,218 415,218', centerX: 437, centerY: 166 },
+  { id: 'g2', finger: '无名指', section: '近节', label: '无名指近节', points: '390,218 448,218 448,298 390,298', centerX: 419, centerY: 258 },
+  // 小指（最右短指）
+  { id: 'a', finger: '小指', section: '远节', label: '小指 DIP', points: '475,85 515,85 515,180 475,180', centerX: 495, centerY: 132 },
+  { id: 'e', finger: '小指', section: '中节', label: '小指 PIP', points: '478,180 515,180 515,288 478,288', centerX: 496, centerY: 234 },
+  { id: 'i', finger: '小指', section: '近节', label: '小指近节', points: '455,288 505,288 505,362 455,362', centerX: 480, centerY: 325 },
+  { id: 'm', finger: '小指', section: '掌指', label: '小指掌指关节区', points: '405,362 510,362 510,418 405,418', centerX: 457, centerY: 390 },
+  // 拇指（左侧外伸）
+  { id: 'v', finger: '拇指', section: '远节', label: '拇指远节（IP）', points: '35,338 115,338 115,410 35,410', centerX: 75, centerY: 374 },
+  { id: 'u', finger: '拇指', section: '近节', label: '拇指近节（掌指）', points: '95,410 175,410 175,478 95,478', centerX: 135, centerY: 444 },
+  // 掌部
+  { id: 't', finger: '掌部', section: '大鱼际', label: '大鱼际肌（拇指球肌）', points: '95,478 270,478 270,625 95,625', centerX: 182, centerY: 552 },
+  { id: 's', finger: '掌部', section: '根部', label: '拇指根部过渡区', points: '200,365 305,365 305,472 200,472', centerX: 252, centerY: 418 },
+  { id: 'r', finger: '掌部', section: '掌心', label: '掌心中央', points: '270,365 440,365 440,625 270,625', centerX: 355, centerY: 495 },
+  { id: 'n', finger: '掌部', section: '无名指下', label: '无名指下方过渡区', points: '380,305 450,305 450,382 380,382', centerX: 415, centerY: 343 },
+  { id: 'q', finger: '掌部', section: '小鱼际', label: '小鱼际肌（小指球肌）', points: '430,400 525,400 525,625 430,625', centerX: 477, centerY: 512 },
+  // 腕部（手腕横纹区，参考手掌下沿）
+  { id: 'w', finger: '掌部', section: '腕部', label: '腕部（桡腕关节）', points: '180,625 480,625 480,700 180,700', centerX: 330, centerY: 662 },
+];
+
+// Borg CR10 评分颜色梯度（0=白/无疲劳 → 10=深红/极度疲劳）
+const SCORE_COLOR: Record<number, string> = {
+  0: '#FFFFFF',
+  1: '#C6E0B4',
+  2: '#9CC2E6',
+  3: '#67AB9F',
+  4: '#4FA8C5',
+  5: '#7FB8E8',
+  6: '#A2C9A1',
+  7: '#D7E58A',
+  8: '#F4D86A',
+  9: '#F0995A',
+  10: '#E84C3D',
+};
 
 interface BehaviorPanelProps {
   activeProjectId: string;
@@ -22,7 +84,9 @@ export function BehaviorPanel({
 }: BehaviorPanelProps) {
   const [activeTab, setActiveTab] = useState(0);
   // taskSequences state is now managed by parent
-  const [selectedHotspot, setSelectedHotspot] = useState<string | null>(null);
+  const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
+  const [regionScores, setRegionScores] = useState<Record<string, number>>({});
+  const [regionNotes, setRegionNotes] = useState<Record<string, string>>({});
   const [editingRecordPoint, setEditingRecordPoint] = useState<string | null>(null);
   
   // New State for Task Management
@@ -80,22 +144,40 @@ export function BehaviorPanel({
 
   const generateTasksForScenario = (scenario: ScenarioData): Task[] => {
     // --------------------------------------------------------
-    // stapler-v3 腹腔镜用智能电动吻合器V3
+    // 威克医疗 一次性腔镜用直线型全电动切割吻合器及钉仓组件
     // --------------------------------------------------------
     
     const sop0: Task = {
       id: `sop0-${scenario.id}`,
       code: 'SOP-0',
       title: '通用术前自检（独立篇）',
-      description: `适用范围：一次性腔镜用全电动切割吻合器及钉仓组件。
-• 步骤 1：检查包装完整性与有效期。
-• 步骤 2：确认设备装配，无松动裂缝。
-• 步骤 3：开机，确认显示屏亮起。
-• 步骤 4：确认系统自检正常，电量充足。
-• 步骤 5：轻按双侧按键，确认机械反馈。
-• 步骤 6：装载钉仓，确认设备自动识别。
-• 步骤 7：空载击发一次，确认电机运转正常。
-• 步骤 8：钳口闭合复位，偏转角归零。`,
+      description: `适用范围：威克医疗一次性腔镜用直线型全电动切割吻合器及钉仓组件的所有使用场景，任何手术操作前必须完整执行。
+
+步骤 1：包装完整性检查
+取出无菌包装，检查外包装有无破损、受潮、污染痕迹；核对灭菌有效期未过期、批号清晰可追溯。破损、过期、受潮者一律弃用，不得使用。
+
+步骤 2：设备装配确认
+确认吻合器手柄与钉仓组件型号匹配，检查各连接部位无松动、无裂缝、无异物附着。
+
+步骤 3：开机
+按下电源键开机，观察显示屏是否亮起并进入待机界面。若屏幕不亮，检查电池装配是否正确、电池触点是否清洁。
+
+步骤 4：系统自检确认
+观察显示屏自检信息：电量显示充足、系统状态正常、无故障代码。电量不足或出现故障代码时，更换电池或更换设备。
+
+步骤 5：双侧按键功能测试
+空载状态下分别轻按手柄左右两侧按键，确认双侧按键均有清晰的机械"咔嗒"反馈、按键回弹正常。若单侧无反馈或卡滞，更换设备。
+
+步骤 6：钉仓装载与识别
+装载适配钉仓，确认钉仓卡入到位（听到到位声或触到到位手感）。观察显示屏是否自动识别并显示钉仓型号/颜色。无法识别时，重新装载；仍无法识别则更换钉仓或设备。
+
+步骤 7：空载击发测试
+在钳口空载（未夹任何组织）状态下执行一次空载击发，确认电机运转声音正常、无卡顿、击发与回刀动作流畅。异常则更换设备。
+
+步骤 8：功能复位
+完成自检后，确认钳口处于闭合或复位状态，偏转角度归零，设备进入待机待用状态，方可进入手术操作流程。
+
+自检通过标准：上述 8 步全部通过，显示屏状态正常、双侧按键正常、钉仓识别正常、空载击发正常。`,
       illustration: 'M20,20 L60,20 L60,60 L20,60 Z M30,40 L45,40 M45,40 L40,35 M45,40 L40,45', 
       recordPoints: [
         { id: 'rp0-1', label: '开机自检时长', value: '', editable: true, unit: 's', range: '1-5', recommended: '<3', guidance: '按下电源键到进入待机界面的时间' },
@@ -103,7 +185,8 @@ export function BehaviorPanel({
         { id: 'rp0-3', label: '钉仓识别速度', value: '', editable: true, unit: 's', recommended: '<1', guidance: '装载卡入到显示屏识别的时间' },
         { id: 'rp0-4', label: '空载测试电音', value: '', editable: true, guidance: '评估电机运转声音无卡顿' }
       ],
-      status: 'pending' as const
+      status: 'pending' as const,
+      branchCards: []
     };
 
     if (scenario.id === 'stapler-scene-1') {
@@ -111,58 +194,66 @@ export function BehaviorPanel({
         sop0,
         {
           id: 'sop1-s1', code: 'S1-1', title: '阶段一：入路与定位',
-          description: `• 步骤 1：经穿刺器置入器械，保持钳口闭合。
-• 步骤 2：确认初始偏转角度为 0°。
-• 步骤 3：直视下平稳推进至目标组织，避免钩挂。`,
+          description: `• 步骤 1：通过 Trocar 置入器械头端，保持钳口闭合状态，避免损伤组织。确认头端完整进入腔体。
+• 步骤 2：在显示屏确认初始偏转角度为 0°，避免未察觉的偏转导致误伤。
+• 步骤 3：直视下将钳口缓慢推进至目标组织，全程保持钳口平行于组织平面，确认无阻力、无组织钩挂。`,
           illustration: 'M10,40 L70,40',
           recordPoints: [
             { id: 'rp1-1', label: '置入阻力感知', value: '', editable: true, guidance: '主管评分 1-10 (1=极轻松)' },
             { id: 'rp1-1b', label: '推进对准时间', value: '', editable: true, unit: 's', guidance: '从入路到对准目标的时间' }
           ],
-          status: 'pending' as const
+          status: 'pending' as const,
+          branchCards: []
         },
         {
           id: 'sop1-s2', code: 'S1-2', title: '阶段二：大角度偏转与到位',
-          description: `• 步骤 4：单手操作偏转，逐级增大角度并观察。
-• 步骤 5：到达目标角度后锁定偏转。
-• 步骤 6：微调器械，使钳口对准切割线。
-• 步骤 7：确认钳口完全包绕目标组织。`,
+          description: `• 步骤 4：单手拇指操作偏转控制，缓慢增大偏转角，逐级偏转，每 10°—15° 停顿观察一次，显示屏实时显示角度读数。
+• 步骤 5：到达目标角度（如 45°—60°）后锁定偏转机构，确认显示屏偏转锁定指示出现。
+• 步骤 6：微调器械整体位置，利用偏转与轴向旋转组合，使钳口对准预定切割线，确认钳口与切割线完全平行。
+• 步骤 7：确认钳口已完全包绕目标组织，组织全部进入钳口、无部分脱出，钳口末端可见组织。`,
           illustration: 'M10,40 L40,40 L60,20',
           recordPoints: [
             { id: 'rp1-2', label: '最大偏转角', value: '', editable: true, unit: '°', range: '0-60' },
             { id: 'rp1-3', label: '单手拨轮舒适度', value: '', editable: true, guidance: '拇指操作疲劳度 (RPE 1-10)' },
             { id: 'rp1-3b', label: '锁定操作时间', value: '', editable: true, unit: 's' }
           ],
-          status: 'pending' as const
+          status: 'pending' as const,
+          branchCards: []
         },
         {
           id: 'sop1-s3', code: 'S1-3', title: '阶段三：闭合与击发',
-          description: `• 步骤 8：闭合钳口，观察组织均匀压入。
-• 步骤 9：检查厚度读数，确认与钉仓适配。
-• 步骤 10：确认无周边组织被误夹。
-• 步骤 11：启动电动击发，保持器械稳定。
-• 步骤 12：等待进度条 100% 及完成提示。
-• 步骤 13：松开钳口，缓慢退出器械。`,
+          description: `• 步骤 8：按下闭合控制，闭合钳口，观察组织是否均匀压入，确认显示屏显示闭合到位。
+• 步骤 9：检查显示屏组织厚度读数，确认与所选钉仓适配；厚度超限则松开钳口更换钉仓。
+• 步骤 10：360° 观察钳口周边，确认无邻近组织或血管被误夹。
+• 步骤 11：按下击发按键启动电动击发，保持器械稳定不移动，观察显示屏击发进度条前进。
+• 步骤 12：观察击发完成反馈，进度条 100% 且出现完成提示音。
+• 步骤 13：松开钳口，缓慢退出器械，确认切割线完整、无出血。`,
           illustration: 'M20,30 L60,30 M20,50 L60,50',
           recordPoints: [
             { id: 'rp1-4', label: '两段式扳机力', value: '', editable: true, unit: 'N', guidance: '触发击发的按压力度' },
             { id: 'rp1-5', label: '屏幕信息获取时间', value: '', editable: true, unit: 's', guidance: '读取厚度与进度条的时间' },
             { id: 'rp1-5b', label: '击发稳定性', value: '', editable: true, unit: 'mm', guidance: '击发时枪管轴向位移' }
           ],
-          status: 'pending' as const
+          status: 'pending' as const,
+          branchCards: []
         },
         {
-          id: 'sop1-s4', code: 'S1-4', title: '阶段四：术后检查与意外分支',
-          description: `• 步骤 14：检查切割线平直、成钉良好。
-• 步骤 15：检查无活动性出血。
-• 步骤 16：确认周边组织无损伤。
-【意外处理】偏转不足→重定位；厚度超限→换钉仓；卡顿→电动回刀。`,
+          id: 'sop1-s4', code: 'S1-4', title: '阶段四：术后检查',
+          description: `• 步骤 14：检查切割线是否平直、无成钉不良。
+• 步骤 15：检查吻合口有无活动性出血或渗血。
+• 步骤 16：确认周边组织无撕裂、无灼伤。`,
           illustration: 'M25,40 L35,50 L55,25',
           recordPoints: [
             { id: 'rp1-6', label: '成钉不良率', value: '', editable: true, unit: '%' },
             { id: 'rp1-6b', label: '意外分支触发', value: '', editable: true, guidance: '记录是否触发任何意外分支及处理耗时' }
           ],
-          status: 'pending' as const
+          status: 'pending' as const,
+          branchCards: [
+            { id: 'bc1-1', trigger: '偏转角度不足', action: '重新选择 Trocar 位置或改用手动辅助定位' },
+            { id: 'bc1-2', trigger: '钳口无法完全包绕', action: '撤出重新定位，禁止强行击发' },
+            { id: 'bc1-3', trigger: '组织厚度超限', action: '松开钳口，更换更大规格钉仓' },
+            { id: 'bc1-4', trigger: '击发中卡顿', action: '立即停止，电动回刀，查明原因' }
+          ]
         }
       ];
     }
@@ -172,58 +263,66 @@ export function BehaviorPanel({
         sop0,
         {
           id: 'sop2-s1', code: 'S2-1', title: '阶段一：组织评估与钉仓选择',
-          description: `• 步骤 1：直视评估目标组织厚度。
-• 步骤 2：选择适配钉仓。
-• 步骤 3：装载钉仓并确认设备识别。
-• 步骤 4：核对匹配度，不匹配则更换。`,
+          description: `• 步骤 1：直视下评估目标组织厚度，预估组织压缩后厚度。
+• 步骤 2：根据厚度选择适配钉仓，厚组织选绿色或黑色钉仓，核对钉仓规格标识。
+• 步骤 3：装载所选钉仓，确认钉仓卡到位，显示屏识别钉仓型号。
+• 步骤 4：显示屏核对钉仓与组织匹配度，不匹配则更换钉仓。`,
           illustration: 'M20,20 L60,20 M20,60 L60,60 M20,40 L60,40',
           recordPoints: [
             { id: 'rp2-1', label: '组织预估厚度', value: '', editable: true, unit: 'mm' },
             { id: 'rp2-1b', label: '显示屏读数延迟', value: '', editable: true, unit: 's' }
           ],
-          status: 'pending' as const
+          status: 'pending' as const,
+          branchCards: []
         },
         {
           id: 'sop2-s2', code: 'S2-2', title: '阶段二：钳口闭合与智能压榨',
-          description: `• 步骤 5：钳口完全包绕组织，均匀分布。
-• 步骤 6：缓慢施压闭合，观察压力指示。
-• 步骤 7：启动智能压榨等待倒计时。
-• 步骤 8：等待压榨完成的双重提示。
-• 步骤 9：(薄组织可酌情跳过压榨)。`,
+          description: `• 步骤 5：钳口对准并完全包绕厚组织，确保组织均匀分布，钳口末端可见组织。
+• 步骤 6：按下闭合控制，缓慢闭合钳口，缓慢均匀施压，避免组织挤出，观察显示屏闭合压力指示。
+• 步骤 7：启动智能压榨等待，让组织液充分重新分布，观察显示屏压榨倒计时或进度。
+• 步骤 8：观察压榨状态反馈，压榨时间满足后出现声音与屏幕双重提示。
+• 步骤 9：若为薄组织，术者可视情况跳过压榨等待，直接进入击发。`,
           illustration: 'M30,20 L50,20 L40,40 Z',
           recordPoints: [
             { id: 'rp2-2', label: '闭合压力读数', value: '', editable: true, unit: 'kPa' },
             { id: 'rp2-3', label: '压榨等待时间', value: '', editable: true, unit: 's', guidance: '实际耗时' },
             { id: 'rp2-3b', label: '视听反馈清晰度', value: '', editable: true, guidance: '评分 1-5' }
           ],
-          status: 'pending' as const
+          status: 'pending' as const,
+          branchCards: []
         },
         {
           id: 'sop2-s3', code: 'S2-3', title: '阶段三：击发与成钉',
-          description: `• 步骤 10：确认厚度读数稳定(>2秒)。
-• 步骤 11：匀速电动击发，勿手动施力。
-• 步骤 12：如遇组织滑脱立即停止。
-• 步骤 13：等待击发完成双重确认。
-• 步骤 14：松开钳口，检查成钉质量。`,
+          description: `• 步骤 10：确认压榨充分、组织厚度读数稳定（数值稳定 2 秒以上）。
+• 步骤 11：启动电动击发，保持匀速电动击发、不额外手动施力，观察显示屏进度条。
+• 步骤 12：全程观察击发进度与组织状态，出现组织滑脱立即停止。
+• 步骤 13：击发完成，等待声音与屏幕双重确认。
+• 步骤 14：松开钳口，检查成钉质量，确认钉成型完整、无浮钉或歪钉。`,
           illustration: 'M10,40 L70,40 M40,20 L40,60',
           recordPoints: [
             { id: 'rp2-4', label: '厚度读数稳定期', value: '', editable: true, unit: 's', recommended: '>2' },
             { id: 'rp2-5', label: '击发后震动感', value: '', editable: true, guidance: '手柄传递震动主观评分' }
           ],
-          status: 'pending' as const
+          status: 'pending' as const,
+          branchCards: []
         },
         {
-          id: 'sop2-s4', code: 'S2-4', title: '阶段四：止血确认与意外分支',
-          description: `• 步骤 15：观察 30 秒确认无活动出血。
-• 步骤 16：评估渗血，必要时处理。
-• 步骤 17：记录出血情况。
-【意外处理】组织过厚/外溢→重定位或换仓；浮钉→补缝。`,
+          id: 'sop2-s4', code: 'S2-4', title: '阶段四：止血确认',
+          description: `• 步骤 15：观察吻合口 30 秒，确认无活动性出血。
+• 步骤 16：如有渗血，评估是否需补针或电凝，轻微渗血可观察、活动性出血须处理。
+• 步骤 17：记录出血情况，用于术后质量评估。`,
           illustration: 'M20,40 Q40,10 60,40 Q40,70 20,40',
           recordPoints: [
             { id: 'rp2-6', label: '渗血点数量', value: '', editable: true, unit: '个' },
             { id: 'rp2-6b', label: '意外分支触发', value: '', editable: true, guidance: '记录发生的意外情况与补救用时' }
           ],
-          status: 'pending' as const
+          status: 'pending' as const,
+          branchCards: [
+            { id: 'bc2-1', trigger: '压榨后组织仍过厚', action: '松开，考虑更换更厚规格钉仓' },
+            { id: 'bc2-2', trigger: '压榨中组织外溢', action: '立即停止闭合，重新定位钳口' },
+            { id: 'bc2-3', trigger: '击发中组织滑脱', action: '停止击发，电动回刀，重新操作' },
+            { id: 'bc2-4', trigger: '成钉不良（浮钉）', action: '评估是否需补缝，记录原因' }
+          ]
         }
       ];
     }
@@ -233,60 +332,70 @@ export function BehaviorPanel({
         sop0,
         {
           id: 'sop3-s1', code: 'S3-1', title: '阶段一：切割线规划',
-          description: `• 步骤 1：规划切割路径与钉仓数量。
-• 步骤 2：制定分段击发策略。
-• 步骤 3：准备足量适配钉仓。
-• 步骤 4：规划过渡区钉仓颜色梯度。`,
+          description: `• 步骤 1：规划整体切割路径，评估切割线长度与所需钉仓数量。
+• 步骤 2：确定分段击发策略，切割线超过单钉仓长度时规划 2—3 次击发，每段重叠 2—3mm。
+• 步骤 3：准备足量钉仓（含备用），长切割线通常需 2—4 个钉仓。
+• 步骤 4：若需多次击发，规划钉仓颜色梯度，厚薄组织过渡区选适配钉仓。`,
           illustration: 'M10,40 L30,40 M35,40 L55,40 M60,40 L80,40',
           recordPoints: [
             { id: 'rp3-1', label: '总切割长度', value: '', editable: true, unit: 'mm' },
             { id: 'rp3-1b', label: '规划耗时', value: '', editable: true, unit: 's' }
           ],
-          status: 'pending' as const
+          status: 'pending' as const,
+          branchCards: []
         },
         {
           id: 'sop3-s2', code: 'S3-2', title: '阶段二：分段击发循环',
-          description: `• 步骤 5：首段对准起点，留起始重叠。
-• 步骤 6：闭合钳口并检查厚度。
-• 步骤 7：压榨后击发首段，确认 100%。
-• 步骤 8：松开检查首段完整。
-• 步骤 9：次段与前段重叠 2-3mm。
-• 步骤 10-11：重复闭合-压榨-击发。
-• 步骤 12：末段预留安全边距。`,
+          description: `• 步骤 5：第一段，钳口对准切割线起点，留出 2—3mm 起始重叠，确认起点定位准确。
+• 步骤 6：闭合钳口，确认组织均匀，观察显示屏厚度读数（长切割线组织厚度可能不均）。
+• 步骤 7：充分压榨后电动击发第一段，保持器械轴线稳定，确认击发进度 100%。
+• 步骤 8：松开钳口，检查第一段钉线完整、无出血。
+• 步骤 9：第二段，钳口与第一段末端重叠 2—3mm，确保钉线连续无间隙，确认重叠区到位。
+• 步骤 10：重复"闭合→压榨→击发"流程，与第一段操作一致，确认进度 100%。
+• 步骤 11：依次完成后续各分段，每段均重叠前一末端，全程钉线连续。
+• 步骤 12：最后一段，留出 2—3mm 末端安全边距，避免切割至组织边缘。`,
           illustration: 'M20,30 L60,30 L40,60 Z',
           recordPoints: [
             { id: 'rp3-2', label: '段间重叠精度', value: '', editable: true, unit: 'mm', recommended: '2-3' },
             { id: 'rp3-3', label: '连续击发手部疲劳', value: '', editable: true, guidance: 'Borg评分1-10' },
             { id: 'rp3-3b', label: '单次击发周期耗时', value: '', editable: true, unit: 's' }
           ],
-          status: 'pending' as const
+          status: 'pending' as const,
+          branchCards: []
         },
         {
           id: 'sop3-s3', code: 'S3-3', title: '阶段三：全程止血评估',
-          description: `• 步骤 13：逐段检查切割线及交界处。
-• 步骤 14：确认钉线连续无漏钉。
-• 步骤 15：观察 60 秒确认无活动出血。
-• 步骤 16：标记交界处渗血高发区。
-• 步骤 17：必要时电凝或补针。`,
+          description: `• 步骤 13：逐段检查切割线，重点检查每段交界处，确认无段间出血。
+• 步骤 14：检查钉线连续性，确认重叠区无漏钉或间隙。
+• 步骤 15：观察全程吻合口 60 秒，确认无活动性出血。
+• 步骤 16：评估有无渗血点，分段交界处为渗血高发区，标记渗血点。
+• 步骤 17：必要时对渗血点补针或电凝止血，活动性出血必须处理。`,
           illustration: 'M20,40 L40,60 L70,20',
           recordPoints: [
             { id: 'rp3-4', label: '交界处渗血率', value: '', editable: true, unit: '%' },
             { id: 'rp3-4b', label: '吻合口面积评估', value: '', editable: true, unit: 'mm²' }
           ],
-          status: 'pending' as const
+          status: 'pending' as const,
+          branchCards: []
         },
         {
-          id: 'sop3-s4', code: 'S3-4', title: '阶段四：术后记录与意外分支',
-          description: `• 步骤 18：记录击发次数与钉仓。
-• 步骤 19：记录出血情况。
-• 步骤 20：器械按规范废弃。
-【意外处理】钉线断裂/出血→电凝补缝/追加击发；移位→重新定位。`,
+          id: 'sop3-s4', code: 'S3-4', title: '阶段四：术后记录与器械处理',
+          description: `• 步骤 18：记录击发次数、钉仓类型，用于质量追溯。
+• 步骤 19：记录出血情况，纳入止血并发症监控。
+• 步骤 20：一次性器械按规范废弃处理，严禁重复使用。`,
           illustration: 'M30,20 L50,20 L50,60 L30,60 Z',
           recordPoints: [
             { id: 'rp3-5', label: '使用钉仓总数', value: '', editable: true, unit: '个' },
             { id: 'rp3-5b', label: '意外分支触发', value: '', editable: true, guidance: '记录是否发生上述异常及补救操作' }
           ],
-          status: 'pending' as const
+          status: 'pending' as const,
+          branchCards: [
+            { id: 'bc3-1', trigger: '段间钉线断裂或间隙', action: '评估是否需补缝，记录位置' },
+            { id: 'bc3-2', trigger: '段间交界处出血', action: '电凝或补针止血，必要时追加击发' },
+            { id: 'bc3-3', trigger: '组织厚度不均匀', action: '分段更换适配钉仓' },
+            { id: 'bc3-4', trigger: '击发中器械移位', action: '停止击发，重新定位该段' },
+            { id: 'bc3-5', trigger: '钉仓耗尽', action: '及时补充，避免术中断供' }
+          ]
         }
       ];
     }
@@ -306,7 +415,8 @@ export function BehaviorPanel({
             { id: 'rp1', label: '手柄握持直径', value: '', editable: true, unit: 'mm', range: '15-35', recommended: '20-30', guidance: 'GB 10000 成年人手部尺寸推荐值 20-30mm', risk: '<15mm导致局部压强过大，>35mm导致无法完全握持增加疲劳' },
             { id: 'rp2', label: '操纵力 (指尖)', value: '', editable: true, unit: 'N', range: '1-20', recommended: '<10', guidance: '估算参考：轻松(握笔)≈5-10N；中等(握门把)≈15-25N；用力(拧瓶盖)≈30+N。GB/T 14775 频繁操作建议<10N。', risk: '>20N 易导致手指疲劳或操作失误' }
           ],
-          status: 'pending' as const
+          status: 'pending' as const,
+          branchCards: []
         },
         {
           id: 't2-standard',
@@ -318,7 +428,8 @@ export function BehaviorPanel({
             { id: 'rp3', label: '操作精度', value: '', editable: true, unit: 'mm', range: '0.1-1.0', recommended: '<0.5', guidance: '输入值时确保<0.5mm，避免精度误差导致医疗实验失败', risk: '>1.0mm可能引起误操作，增加实验风险' },
             { id: 'rp4', label: '精细旋钮直径', value: '', editable: true, unit: 'mm', range: '10-25', recommended: '15-20', guidance: '指尖捏持旋钮建议直径 10-25mm', risk: '尺寸不当将降低精细调节的准确性' }
           ],
-          status: 'pending' as const
+          status: 'pending' as const,
+          branchCards: []
         }
       ];
     }
@@ -336,7 +447,8 @@ export function BehaviorPanel({
             { id: 'rp6', label: '手部震颤幅值', value: '', editable: true, unit: 'mm', range: '0-5', recommended: '<0.5', guidance: '测量指尖在静止状态下的位移幅值（医疗操作扩展指标）', risk: '>1.0mm 严重影响显微手术精度，实验需终止' },
             { id: 'rp6-b', label: '握力衰减率', value: '', editable: true, unit: '%', range: '0-100', recommended: '<15', guidance: '操作前后最大握力变化', risk: '>20% 肌肉明显疲劳' }
           ],
-          status: 'pending' as const
+          status: 'pending' as const,
+          branchCards: []
         },
         {
           id: 't2-fatigue',
@@ -348,7 +460,8 @@ export function BehaviorPanel({
             { id: 'rp7', label: '反馈力矩', value: '', editable: true, unit: 'N·m', range: '0.1-2.0', recommended: '0.2-0.8', guidance: 'GB/T 14775：触觉反馈需清晰。疲劳状态下需更明确的反馈。', risk: '<0.15N·m 疲劳时无法感知锁止，导致误操作' },
             { id: 'rp8', label: '锁止确定性', value: '', editable: true, guidance: '记录是否发生假锁止（是/否）' }
           ],
-          status: 'pending' as const
+          status: 'pending' as const,
+          branchCards: []
         },
         {
           id: 't3-fatigue',
@@ -359,7 +472,8 @@ export function BehaviorPanel({
           recordPoints: [
             { id: 'rp10', label: '精度误差变化', value: '', editable: true, unit: '%', guidance: '(疲劳后误差 - 初始误差) / 初始误差' }
           ],
-          status: 'pending' as const
+          status: 'pending' as const,
+          branchCards: []
         }
       ];
     }
@@ -375,7 +489,8 @@ export function BehaviorPanel({
           recordPoints: [
             { id: 'rp11', label: '滑脱发生次数', value: '', editable: true, unit: '次', range: '0-5', recommended: '0', guidance: '记录在特定操作时间内滑脱的次数。' }
           ],
-          status: 'pending' as const
+          status: 'pending' as const,
+          branchCards: []
         }
       ];
     }
@@ -391,7 +506,8 @@ export function BehaviorPanel({
           { id: `rp1-${scenario.id}`, label: '关键指标测量', value: '', editable: true }
         ],
         status: 'pending' as const,
-        isCustom: true
+        isCustom: true,
+        branchCards: []
       }
     ];
   };
@@ -620,6 +736,153 @@ export function BehaviorPanel({
     }
   };
 
+  // --- State Update Handlers (previously referenced but undefined, now implemented) ---
+
+  const updateSequences = (updater: (seq: TaskSequence) => TaskSequence) => {
+    const updated = taskSequences.map(seq => updater(seq as TaskSequence));
+    onTaskSequencesChange(updated);
+  };
+
+  // 保存记录点：填写完成后自动将该任务标记为 Done
+  const handleUpdateRecordPoint = (taskId: string, pointId: string, value: string) => {
+    updateSequences((seq) => ({
+      ...seq,
+      tasks: seq.tasks.map((task) => {
+        if (task.id !== taskId) return task;
+        const recordPoints: RecordPoint[] = task.recordPoints.map((rp) =>
+          rp.id === pointId ? { ...rp, value } : rp
+        );
+        const allFilled = recordPoints.length > 0 &&
+          recordPoints.every((rp) => rp.value && rp.value.trim() !== '');
+        return {
+          ...task,
+          recordPoints,
+          status: allFilled ? 'completed' : task.status
+        };
+      })
+    }));
+  };
+
+  // 自定义任务添加
+  const handleAddTask = () => {
+    if (!newTask.title || !currentSequence) return;
+    const task: Task = {
+      id: `custom-${Date.now()}`,
+      code: 'CUSTOM',
+      title: newTask.title,
+      description: newTask.description || '（自定义任务）',
+      recordPoints: newTask.recordPoints || [],
+      status: 'pending' as const,
+      illustration: 'M30,30 h20 v20 h-20 z',
+      isCustom: true,
+      branchCards: []
+    };
+    updateSequences((seq) =>
+      seq.scenarioId === currentSequence.scenarioId
+        ? { ...seq, tasks: [...seq.tasks, task] }
+        : seq
+    );
+    setNewTask({ title: '', description: '', recordPoints: [] });
+    setShowAddForm(false);
+  };
+
+  // AI 扩展任务（调用 DeepSeek 生成高危/关键测试任务）
+  const handleAIExpand = async () => {
+    if (!currentSequence) return;
+    setIsGenerating(true);
+    try {
+      const currentTasks = currentSequence.tasks.map((t: Task) => t.title);
+      const aiTask = await generateExtendedTask(
+        currentSequence.scenarioTitle,
+        currentSequence.scenarioDescription,
+        currentTasks
+      );
+      const task: Task = {
+        id: `ai-${Date.now()}`,
+        code: aiTask.code || 'AI',
+        title: aiTask.title || 'AI 扩展任务',
+        description: aiTask.description || '',
+        recordPoints: (aiTask.recordPoints || []).map((rp: any) => ({
+          ...rp,
+          value: '',
+          editable: true
+        })),
+        status: 'pending' as const,
+        illustration: aiTask.illustration || 'M30,30 h20 v20 h-20 z',
+        isCustom: true,
+        branchCards: []
+      };
+      updateSequences((seq) =>
+        seq.scenarioId === currentSequence.scenarioId
+          ? { ...seq, tasks: [...seq.tasks, task] }
+          : seq
+      );
+    } catch (e: any) {
+      alert('AI 扩展失败: ' + e.message);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  // 事后添加意外分支 SOP 卡片
+  const handleAddBranchCard = (taskId: string) => {
+    const trigger = window.prompt('意外分支触发条件（例如：击发中卡顿）');
+    if (trigger === null) return;
+    const action = window.prompt('处理动作（例如：立即停止，电动回刀，查明原因）');
+    if (action === null) return;
+    if (!trigger.trim() && !action.trim()) return;
+    const card: BranchCard = {
+      id: `bc-${Date.now()}`,
+      trigger: trigger.trim(),
+      action: action.trim(),
+      recordPoints: []
+    };
+    updateSequences((seq) => ({
+      ...seq,
+      tasks: seq.tasks.map((task) =>
+        task.id === taskId
+          ? { ...task, branchCards: [...(task.branchCards || []), card] }
+          : task
+      )
+    }));
+  };
+
+  // 删除意外分支 SOP 卡片
+  const handleDeleteBranchCard = (taskId: string, cardId: string) => {
+    updateSequences((seq) => ({
+      ...seq,
+      tasks: seq.tasks.map((task) =>
+        task.id === taskId
+          ? { ...task, branchCards: (task.branchCards || []).filter((c) => c.id !== cardId) }
+          : task
+      )
+    }));
+  };
+
+  // 手部解剖热力图：点击分区 → 记录 0-10 疲劳评分（Borg CR10）
+  const handleRegionScore = (regionId: string, score: number) => {
+    setRegionScores((prev) => ({ ...prev, [regionId]: score }));
+  };
+
+  const handleClearRegion = (regionId: string) => {
+    setRegionScores((prev) => {
+      const next = { ...prev };
+      delete next[regionId];
+      return next;
+    });
+    setRegionNotes((prev) => {
+      const next = { ...prev };
+      delete next[regionId];
+      return next;
+    });
+  };
+
+  const handleClearAllRegions = () => {
+    setRegionScores({});
+    setRegionNotes({});
+    setSelectedRegion(null);
+  };
+
   if (taskSequences.length === 0) {
     return (
       <div className="p-6">
@@ -824,7 +1087,7 @@ export function BehaviorPanel({
                       </div>
                     </div>
                   </div>
-                  {task.description.includes('•') ? (
+                  {task.description && task.description.includes('•') ? (
                     <details className="mt-2 group">
                       <summary className="text-[10px] font-medium text-[#007AFF] cursor-pointer outline-none select-none hover:underline">
                         展开/折叠详细操作步骤
@@ -935,77 +1198,192 @@ export function BehaviorPanel({
                   ))}
                 </div>
               </div>
+
+              {/* Branch Cards (意外分支 SOP 可事后添加补充记录) */}
+              <div className="pt-3 border-t border-gray-200 mt-3">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <AlertTriangle className="w-3.5 h-3.5 text-orange-500" />
+                  <span className="text-xs text-gray-700 font-medium">异常分支 SOP 卡片</span>
+                </div>
+                {task.branchCards && task.branchCards.length > 0 ? (
+                  <div className="space-y-2">
+                    {task.branchCards.map((card) => (
+                      <div key={card.id} className="border border-orange-200 bg-orange-50/40 rounded p-2.5 group">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 text-[11px]">
+                            <div className="text-orange-700 font-medium">触发：{card.trigger}</div>
+                            <div className="text-gray-600 mt-0.5">处理：{card.action}</div>
+                          </div>
+                          <button
+                            onClick={() => handleDeleteBranchCard(task.id, card.id)}
+                            className="p-1 hover:bg-orange-100 rounded flex-shrink-0"
+                            title="删除该分支卡片"
+                          >
+                            <Trash2 className="w-3 h-3 text-orange-400" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-[10px] text-gray-400 mb-2">暂无异常分支卡片</div>
+                )}
+                <button
+                  onClick={() => handleAddBranchCard(task.id)}
+                  className="mt-2 flex items-center gap-1 px-2.5 py-1.5 text-[11px] bg-orange-50 text-orange-600 border border-orange-200 rounded hover:bg-orange-100 w-full justify-center"
+                >
+                  <Plus className="w-3 h-3" />
+                  添加意外分支 SOP 卡片
+                </button>
+              </div>
             </div>
           ))}
         </div>
 
-        {/* Hand Anatomy Heatmap */}
+        {/* Hand Anatomy Heatmap — 23 个解剖分区 0-10 疲劳打分 */}
         <div className="border border-gray-200 rounded-lg p-4 bg-white">
-          <h3 className="text-sm text-gray-700 mb-3">手部解剖热力图</h3>
-          <p className="text-xs text-gray-600 mb-4">
-            点击图中位置记录压痛点或接触区域
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm text-gray-700">手部解剖热力图 · 疲劳评分</h3>
+            <span className="text-[10px] text-gray-500">Borg CR10</span>
+          </div>
+          <p className="text-xs text-gray-600 mb-3">
+            点击任意解剖分区（a-v 共 23 区，指关节/掌部/大鱼际/小鱼际），按 0(无疲劳) — 10(极度疲劳) 评分。
           </p>
 
-          <div className="relative w-full aspect-square max-w-xs mx-auto bg-gradient-to-br from-blue-50 to-gray-50 rounded-lg border border-gray-200">
-            {/* Simplified Hand Shape */}
-            <svg viewBox="0 0 100 100" className="w-full h-full">
-              {/* Palm */}
-              <ellipse cx="40" cy="60" rx="20" ry="25" fill="#E8F4FF" stroke="#007AFF" strokeWidth="0.5" opacity="0.6" />
-              
-              {/* Thumb */}
-              <ellipse cx="30" cy="40" rx="8" ry="15" fill="#E8F4FF" stroke="#007AFF" strokeWidth="0.5" opacity="0.6" transform="rotate(-30 30 40)" />
-              
-              {/* Fingers */}
-              <ellipse cx="50" cy="25" rx="5" ry="18" fill="#E8F4FF" stroke="#007AFF" strokeWidth="0.5" opacity="0.6" />
-              <ellipse cx="60" cy="30" rx="5" ry="20" fill="#E8F4FF" stroke="#007AFF" strokeWidth="0.5" opacity="0.6" />
-              <ellipse cx="68" cy="38" rx="4" ry="18" fill="#E8F4FF" stroke="#007AFF" strokeWidth="0.5" opacity="0.6" />
-              <ellipse cx="75" cy="48" rx="4" ry="15" fill="#E8F4FF" stroke="#007AFF" strokeWidth="0.5" opacity="0.6" />
-
-              {/* Hotspot markers */}
-              {hotspots.map((hotspot) => (
-                <g key={hotspot.id}>
-                  <circle
-                    cx={hotspot.x}
-                    cy={hotspot.y}
-                    r="4"
-                    fill={selectedHotspot === hotspot.id ? '#FF9500' : '#007AFF'}
-                    opacity={selectedHotspot === hotspot.id ? '1' : '0.7'}
-                    className="cursor-pointer hover:opacity-100 transition-opacity"
-                    onClick={() => handleHotspotClick(hotspot)}
-                  />
-                  {selectedHotspot === hotspot.id && (
-                    <circle
-                      cx={hotspot.x}
-                      cy={hotspot.y}
-                      r="8"
-                      fill="none"
-                      stroke="#FF9500"
-                      strokeWidth="1.5"
-                      opacity="0.5"
-                    >
-                      <animate attributeName="r" from="4" to="12" dur="1s" repeatCount="indefinite" />
-                      <animate attributeName="opacity" from="0.8" to="0" dur="1s" repeatCount="indefinite" />
-                    </circle>
-                  )}
-                </g>
-              ))}
+          <div className="relative w-full max-w-[280px] mx-auto aspect-[582/720]">
+            <img
+              src="/hand-anatomy.png"
+              alt="手部解剖分区图"
+              className="absolute inset-0 w-full h-full select-none pointer-events-none"
+              draggable={false}
+            />
+            <svg
+              viewBox="0 0 582 720"
+              className="absolute inset-0 w-full h-full"
+              onClick={() => setSelectedRegion(null)}
+            >
+              {HAND_REGIONS.map((region) => {
+                const score = regionScores[region.id];
+                const fill = score != null ? SCORE_COLOR[score] : 'transparent';
+                const isSelected = selectedRegion === region.id;
+                return (
+                  <g key={region.id}>
+                    <polygon
+                      points={region.points}
+                      fill={fill}
+                      fillOpacity={score != null ? 0.55 : 0}
+                      stroke={isSelected ? '#FF9500' : 'transparent'}
+                      strokeWidth={isSelected ? 2 : 0}
+                      className="cursor-pointer transition-colors"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedRegion(region.id);
+                      }}
+                    />
+                    {score != null && (
+                      <text
+                        x={region.centerX}
+                        y={region.centerY}
+                        textAnchor="middle"
+                        dominantBaseline="middle"
+                        className="pointer-events-none select-none"
+                        fontSize="14"
+                        fontWeight="700"
+                        fill="#1A1A1A"
+                      >
+                        {score}
+                      </text>
+                    )}
+                  </g>
+                );
+              })}
             </svg>
           </div>
 
-          {/* Selected Hotspot Info */}
-          {selectedHotspot && (
-            <div className="mt-4 p-3 bg-orange-50 border border-[#FF9500] rounded-lg animate-in fade-in slide-in-from-top-1">
+          {/* 评分操作面板 */}
+          {selectedRegion && (
+            <div className="mt-3 p-3 bg-orange-50 border border-[#FF9500] rounded-lg">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-sm text-gray-900">
-                  已添加: {hotspots.find(h => h.id === selectedHotspot)?.label}压痛
-                </span>
-                <span className="text-xs px-2 py-0.5 rounded bg-[#FF9500] text-white">
-                  已记录
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center justify-center w-6 h-6 rounded bg-[#FF9500] text-white text-xs font-bold">
+                    {HAND_REGIONS.find(r => r.id === selectedRegion)?.id}
+                  </span>
+                  <span className="text-sm text-gray-900">
+                    {HAND_REGIONS.find(r => r.id === selectedRegion)?.label}
+                  </span>
+                </div>
+                <button
+                  onClick={() => setSelectedRegion(null)}
+                  className="text-xs text-gray-500 hover:text-gray-700"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="text-xs text-gray-600 mb-2">
+                疲劳评分（0-10 Borg CR10）：
+                <span className="ml-2 font-bold text-[#FF9500] text-base">
+                  {regionScores[selectedRegion] ?? '—'}
                 </span>
               </div>
-              <p className="text-xs text-gray-600">
-                该记录点已自动添加到当前任务列表中，请补充疼痛评分。
-              </p>
+              <div className="grid grid-cols-11 gap-1 mb-2">
+                {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => handleRegionScore(selectedRegion, n)}
+                    className={`py-1.5 text-xs rounded border transition-all ${
+                      regionScores[selectedRegion] === n
+                        ? 'border-[#FF9500] text-white font-bold shadow'
+                        : 'border-gray-200 text-gray-700 hover:border-[#FF9500] hover:bg-orange-50'
+                    }`}
+                    style={regionScores[selectedRegion] === n ? { backgroundColor: SCORE_COLOR[n] } : {}}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center justify-between text-[10px] text-gray-500">
+                <span>0=无疲劳</span>
+                <span>5=中等</span>
+                <span>10=极度</span>
+              </div>
+              {(regionScores[selectedRegion] != null || regionNotes[selectedRegion]) && (
+                <button
+                  onClick={() => handleClearRegion(selectedRegion)}
+                  className="mt-2 w-full py-1 text-xs text-gray-500 hover:text-red-600 border border-gray-200 rounded hover:border-red-300"
+                >
+                  清除该区域评分
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* 评分汇总表 */}
+          {Object.keys(regionScores).length > 0 && (
+            <div className="mt-3 p-2 bg-gray-50 border border-gray-200 rounded text-xs">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="font-medium text-gray-700">已评分区域</span>
+                <span className="text-gray-500">
+                  {Object.keys(regionScores).length} / 23 区
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {HAND_REGIONS.filter(r => regionScores[r.id] != null).map(r => (
+                  <span
+                    key={r.id}
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-white"
+                    style={{ backgroundColor: SCORE_COLOR[regionScores[r.id]] }}
+                  >
+                    <strong>{r.id}</strong>
+                    <span>{regionScores[r.id]}</span>
+                  </span>
+                ))}
+              </div>
+              <button
+                onClick={handleClearAllRegions}
+                className="mt-2 w-full py-1 text-[10px] text-gray-500 hover:text-red-600"
+              >
+                清除全部评分
+              </button>
             </div>
           )}
         </div>

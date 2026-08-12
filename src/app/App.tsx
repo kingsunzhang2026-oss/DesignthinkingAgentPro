@@ -30,6 +30,13 @@ export interface RecordPoint {
   risk?: string;
 }
 
+export interface BranchCard {
+  id: string;
+  trigger: string;       // 意外分支触发条件
+  action: string;        // 处理动作
+  recordPoints?: RecordPoint[];
+}
+
 export interface Task {
   id: string;
   code: string;
@@ -39,6 +46,7 @@ export interface Task {
   status: 'completed' | 'active' | 'pending';
   illustration: string;
   isCustom?: boolean;
+  branchCards?: BranchCard[];   // 异常分支 SOP 卡片（可事后添加补充记录）
 }
 
 export interface TaskSequence {
