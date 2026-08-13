@@ -180,7 +180,7 @@ export default function App() {
         selected: project.id === 'forceps-v2' ? 2 : (project.id === 'stapler-v3' ? 2 : 0) 
       },
       behavior: { total: 0, completed: 0 },
-      alignment: { analyzed: false, deviations: 0 }
+      alignment: { analyzed: false, deviations: 0, deviationItems: [] as any[] }
     });
   }, [activeProjectId]);
 
@@ -360,7 +360,7 @@ export default function App() {
   const [taskCompletionStats, setTaskCompletionStats] = useState({
     context: { total: 3, selected: 2 },
     behavior: { total: 6, completed: 0 },
-    alignment: { analyzed: false, deviations: 0 }
+    alignment: { analyzed: false, deviations: 0, deviationItems: [] as any[] }
   });
 
   return (
@@ -412,6 +412,7 @@ export default function App() {
             onScenariosChange={setScenarios}
             knowledgeBase={knowledgeBase}
             onTaskStatsChange={setTaskCompletionStats}
+            taskStats={taskCompletionStats}
             taskSequences={taskSequences}
             onTaskSequencesChange={setTaskSequences}
           />

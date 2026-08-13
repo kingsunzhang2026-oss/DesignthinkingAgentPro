@@ -85,6 +85,7 @@
     "cmdk@1.1.1": "npm:cmdk@1.1.1",
     "date-fns": "3.6.0",
     "date-fns@3.6.0": "npm:date-fns@3.6.0",
+    "docx": "^9.7.1",
     "embla-carousel-react": "8.6.0",
     "embla-carousel-react@8.6.0": "npm:embla-carousel-react@8.6.0",
     "hono": "^4.13.0",

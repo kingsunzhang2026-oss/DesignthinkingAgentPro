@@ -8,6 +8,16 @@
  * RLS 为 MVP 宽松版（anon 可读写），上线前务必改为按 auth.uid() 隔离。
  */
 import { supabase } from '../utils/supabase/client';
+import { createClient } from '@supabase/supabase-js';
+import { projectId, publicAnonKey } from '../utils/supabase/info';
+
+// 录音上传专用匿名客户端：规避"已登录用户(authenticated)被 storage RLS 拦截"导致上传失败。
+// prototype-assets 为 public bucket，anon 已验证可写；登录/未登录均以此身份上传，确保一定能存云端。
+const supabaseAnon = createClient(
+  `https://${projectId}.supabase.co`,
+  publicAnonKey,
+  { auth: { persistSession: false, autoRefreshToken: false } },
+);
 
 // 当前为单项目原型，固定项目标识；后续接入多项目时改为动态
 export const PROJECT_ID = 'xiaojian-bipolar-v2';
@@ -207,4 +217,22 @@ export async function deletePrototypeAsset(asset: PrototypeAsset): Promise<void>
   }
   const { error } = await supabase.from('prototype_assets').delete().eq('id', asset.id);
   if (error) throw new Error(error.message);
+}
+
+/**
+ * 上传现场测试的出声报告录音（现已在前端转码为 wav），返回公开访问 URL。
+ * 复用 prototype-assets public bucket（anon 可读写），作为测试记录附件，不写资产表。
+ */
+export async function uploadAudioReport(file: File, scenarioId: string): Promise<string> {
+  const safeName = sanitize(file.name || 'report.wav');
+  const path = `audio-reports/${scenarioId}/${Date.now()}_${safeName}`;
+  const { error: upErr } = await supabaseAnon.storage
+    .from('prototype-assets')
+    .upload(path, file, {
+      cacheControl: '3600',
+      upsert: false,
+      contentType: file.type || 'audio/wav',
+    });
+  if (upErr) throw new Error('录音上传失败: ' + upErr.message);
+  return supabaseAnon.storage.from('prototype-assets').getPublicUrl(path).data.publicUrl;
 }

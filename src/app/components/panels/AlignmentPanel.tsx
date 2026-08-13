@@ -5,7 +5,7 @@ import { callLLM, hasApiKey } from '../../services/llm';
 import { TaskSequence, RecordPoint } from '../../App';
 
 interface AlignmentPanelProps {
-  onAnalysisComplete: (deviations: number) => void;
+  onAnalysisComplete: (deviations: DeviationItem[]) => void;
   knowledgeBase?: any[];
   taskSequences: TaskSequence[];
 }
@@ -218,7 +218,7 @@ export function AlignmentPanel({ onAnalysisComplete, knowledgeBase = [], taskSeq
 
       setDeviations(parsedDeviations);
       setAnalyzed(true);
-      onAnalysisComplete(parsedDeviations.length);
+      onAnalysisComplete(parsedDeviations);
       
     } catch (err: any) {
       console.error('[AlignmentPanel] 分析失败:', err);
@@ -257,7 +257,7 @@ export function AlignmentPanel({ onAnalysisComplete, knowledgeBase = [], taskSeq
 
       setDeviations(fallbackDeviations);
       setAnalyzed(true);
-      onAnalysisComplete(fallbackDeviations.length);
+      onAnalysisComplete(fallbackDeviations);
     } finally {
       setAnalyzing(false);
     }

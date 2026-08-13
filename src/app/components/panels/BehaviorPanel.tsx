@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Smartphone, Circle, Save, Plus, Trash2, Sparkles, AlertTriangle, FileText, CloudUpload, Download, Users, Loader2, Mic, Square } from 'lucide-react';
 import { ScenarioData, TaskSequence, Task, RecordPoint, BranchCard } from '../../App';
+import type { Recording } from '../InspectorPanel';
 import { generateExtendedTask } from '../../services/aiScenarios';
 import { supabase } from '../../utils/supabase/client';
 import { projectId, publicAnonKey } from '../../utils/supabase/info';
+import { transcribeAudio } from '../../services/asr';
+import { exportRecordingsByAccount, exportFullReport } from '../../services/docExport';
 
 // 23 个手部解剖分区（与 /public/hand-anatomy.png 中 a-v 标注一一对应）
 // 坐标系：viewBox 0 0 582 720（图片实际像素 582×720）
@@ -71,16 +74,35 @@ interface BehaviorPanelProps {
   activeProjectId: string;
   scenarios: any[];
   onTaskStatsChange: (stats: any) => void;
+  taskStats: any;
   taskSequences: any[];
   onTaskSequencesChange: (sequences: any[]) => void;
+  // 录音相关整套由 InspectorPanel 托管（切节点不丢、不中断）
+  recordings: Recording[];
+  setRecordings: React.Dispatch<React.SetStateAction<Recording[]>>;
+  currentRecIdx: number;
+  setCurrentRecIdx: React.Dispatch<React.SetStateAction<number>>;
+  isRecording: boolean;
+  recordingTask: string | null;
+  startRecording: (scenarioId: string) => void;
+  stopRecording: () => void;
 }
 
 export function BehaviorPanel({ 
   activeProjectId,
   scenarios, 
   onTaskStatsChange,
+  taskStats,
   taskSequences,
-  onTaskSequencesChange
+  onTaskSequencesChange,
+  recordings,
+  setRecordings,
+  currentRecIdx,
+  setCurrentRecIdx,
+  isRecording,
+  recordingTask,
+  startRecording,
+  stopRecording
 }: BehaviorPanelProps) {
   const [activeTab, setActiveTab] = useState(0);
   // taskSequences state is now managed by parent
@@ -97,6 +119,8 @@ export function BehaviorPanel({
     description: '',
     recordPoints: []
   });
+  // 录音分组折叠：key = 账号__会话
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
   // Generate task sequences based on selected scenarios
   useEffect(() => {
@@ -528,12 +552,6 @@ export function BehaviorPanel({
   const [isUploading, setIsUploading] = useState(false);
   const [user, setUser] = useState<any>(null);
 
-  // Audio Recording State
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordingTask, setRecordingTask] = useState<string | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
-
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
         setUser(session?.user ?? null);
@@ -546,57 +564,6 @@ export function BehaviorPanel({
     return () => subscription.unsubscribe();
   }, []);
 
-  // --- Audio Recording Functions (Stage 1) ---
-  const startRecording = async (scenarioId: string) => {
-    try {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error('当前环境或浏览器不支持麦克风录音。');
-      }
-
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
-
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
-      };
-
-      mediaRecorder.onstop = () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        const audioUrl = URL.createObjectURL(audioBlob);
-        
-        if (window.confirm("出声报告录音结束。是否将该录音音频转写为文字并自动记录？（将调用火山引擎豆包语音识别）")) {
-           const audio = new Audio(audioUrl);
-           audio.play();
-           alert("准备调用豆包语音 API... (在开发环境中)");
-        }
-      };
-
-      mediaRecorder.start();
-      setRecordingTask(scenarioId);
-      setIsRecording(true);
-    } catch (error: any) {
-      console.error('Error accessing microphone:', error);
-      if (error.name === 'NotAllowedError' || error.message.includes('Permission denied')) {
-        alert('权限被拒绝：请在本地运行 (npm run dev) 或在真实网页中测试此出声报告功能。');
-      } else {
-        alert(`无法访问麦克风: ${error.message}`);
-      }
-    }
-  };
-
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
-      setIsRecording(false);
-      setRecordingTask(null);
-    }
-  };
-
   const [cloudCount, setCloudCount] = useState<number | null>(null);
 
   // Cloud Sync & Export Functions
@@ -607,7 +574,7 @@ export function BehaviorPanel({
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
-        alert('请先登录以保存数据');
+        alert('请先登录后再保存：点击左侧栏底部的「登录账号」按钮（演示账号 admin@make.com / admin123）。');
         setIsUploading(false);
         return;
       }
@@ -736,6 +703,45 @@ export function BehaviorPanel({
     }
   };
 
+  // —— Word 导出（前端 docx 生成，按用户需求统一 Word 格式）——
+  const PROJECT_NAME_MAP: Record<string, string> = {
+    'forceps-v2': '小钳智能双极电刀 V2',
+    'stapler-v3': '威克医疗一次性腔镜用直线型全电动切割吻合器',
+  };
+
+  // 出声报告：按「账号 + 登录会话」分组导出（满足 A/B 按账号区分、拆分导出）
+  const handleExportVocalReport = () => {
+    try {
+      exportRecordingsByAccount(recordings as any);
+    } catch (e: any) {
+      console.error('导出出声报告失败:', e);
+      alert('导出出声报告失败: ' + e.message);
+    }
+  };
+
+  // 整体测试记录报告：SOP 完成度 / 量化记录点 / 手部工效评分 / 录音转写 / 人机对齐分析
+  const handleExportFullReport = () => {
+    try {
+      const regionLabelMap = HAND_REGIONS.reduce((m: Record<string, string>, r: any) => {
+        m[r.id] = r.label;
+        return m;
+      }, {});
+      exportFullReport({
+        projectName: PROJECT_NAME_MAP[activeProjectId] || activeProjectId,
+        taskSequences: (taskSequences as any) || [],
+        regionScores,
+        regionNotes,
+        regionLabelMap,
+        recordings: recordings as any,
+        deviationItems: (taskStats?.alignment?.deviationItems as any) || [],
+        alignmentAnalyzed: !!taskStats?.alignment?.analyzed,
+      });
+    } catch (e: any) {
+      console.error('导出整体报告失败:', e);
+      alert('导出整体报告失败: ' + e.message);
+    }
+  };
+
   // --- State Update Handlers (previously referenced but undefined, now implemented) ---
 
   const updateSequences = (updater: (seq: TaskSequence) => TaskSequence) => {
@@ -789,6 +795,10 @@ export function BehaviorPanel({
   // AI 扩展任务（调用 DeepSeek 生成高危/关键测试任务）
   const handleAIExpand = async () => {
     if (!currentSequence) return;
+    if (!user) {
+      alert('请先登录后再使用 AI 扩展任务：点击左侧栏底部的「登录账号」（演示账号 admin@make.com / admin123）。');
+      return;
+    }
     setIsGenerating(true);
     try {
       const currentTasks = currentSequence.tasks.map((t: Task) => t.title);
@@ -944,11 +954,16 @@ export function BehaviorPanel({
             </button>
           </div>
           <div className="flex gap-2">
+             {!user && (
+              <span className="flex items-center gap-1 text-[11px] text-amber-600 mr-1 px-2 py-1.5">
+                <AlertTriangle className="w-3 h-3" /> 未登录
+              </span>
+             )}
              <button
               onClick={handleCloudSubmit}
-              disabled={isUploading}
-              className="flex items-center gap-1 px-3 py-1.5 text-xs bg-green-50 text-green-700 border border-green-200 rounded hover:bg-green-100 disabled:opacity-50 transition-all"
-              title="并发安全上传"
+              disabled={isUploading || !user}
+              className="flex items-center gap-1 px-3 py-1.5 text-xs bg-green-50 text-green-700 border border-green-200 rounded hover:bg-green-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+              title={user ? "并发安全上传" : "请先登录"}
             >
               {isUploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <CloudUpload className="w-3 h-3" />}
               云端同步
@@ -960,27 +975,119 @@ export function BehaviorPanel({
             </button>
             <div className="h-6 w-px bg-gray-300 mx-1"></div>
             <button
-              onClick={handleExportMyRecords}
-              className={`flex items-center gap-1 px-3 py-1.5 text-xs bg-white text-gray-700 border border-gray-200 rounded hover:bg-gray-50 ${!user ? 'opacity-50 cursor-not-allowed' : ''}`}
-              title={user ? "下载我的记录 (JSON)" : "请先登录"}
-              disabled={!user}
+              onClick={handleExportVocalReport}
+              disabled={recordings.length === 0}
+              className="flex items-center gap-1 px-3 py-1.5 text-xs bg-white text-gray-700 border border-gray-200 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              title={recordings.length ? "按账号分组导出出声报告(Word)" : "暂无录音"}
             >
-              <Download className="w-3 h-3" />
-              导出个人
+              <FileText className="w-3 h-3" />
+              导出出声报告
             </button>
-            
-            {user?.email === 'admin@make.com' && (
-              <button
-                onClick={handleExportAllRecords}
-                className="flex items-center gap-1 px-3 py-1.5 text-xs bg-purple-50 text-purple-700 border border-purple-200 rounded hover:bg-purple-100"
-                title="管理员：批量导出所有被试数据"
-              >
-                <Users className="w-3 h-3" />
-                导出全员
-              </button>
-            )}
+            <button
+              onClick={handleExportFullReport}
+              className="flex items-center gap-1 px-3 py-1.5 text-xs bg-blue-50 text-blue-700 border border-blue-200 rounded hover:bg-blue-100"
+              title="汇总导出整体测试记录报告(Word)"
+            >
+              <FileText className="w-3 h-3" />
+              导出整体报告
+            </button>
           </div>
         </div>
+
+        {/* 出声报告录音：按「账号 + 登录会话」分组，可折叠，支持单条删除 / 整组清空 */}
+        {recordings.length > 0 && (() => {
+          const groupKey = (r: Recording) => `${r.account || '未登录'}__${r.sessionId || 'default'}`;
+          const groups: Record<string, Recording[]> = {};
+          recordings.forEach((r) => { (groups[groupKey(r)] ||= []).push(r); });
+          const groupList = Object.entries(groups).sort((a, b) => b[1][0].at - a[1][0].at);
+          return (
+            <div className="mb-3 space-y-2">
+              {groupList.map(([key, recs]) => {
+                const first = recs[0];
+                const collapsed = !!collapsedGroups[key];
+                const label = first.account && first.account !== '未登录' ? first.account : '未登录用户';
+                const sessionTime = new Date(first.at).toLocaleString();
+                return (
+                  <div key={key} className="border border-gray-200 rounded-lg bg-gray-50 overflow-hidden">
+                    <div className="flex items-center justify-between px-3 py-2 bg-gray-100">
+                      <button
+                        onClick={() => setCollapsedGroups((p) => ({ ...p, [key]: !collapsed }))}
+                        className="flex items-center gap-1 text-xs font-medium text-gray-700 min-w-0"
+                      >
+                        <span className="shrink-0">{collapsed ? '▶' : '▼'}</span>
+                        <span className="truncate">{label}</span>
+                        <span className="text-[11px] text-gray-500 shrink-0">· {sessionTime}</span>
+                        <span className="ml-1 text-[11px] text-gray-500 shrink-0">（{recs.length} 段）</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (confirm(`确认清空该会话的全部 ${recs.length} 段录音？`)) {
+                            setRecordings((prev) => prev.filter((r) => groupKey(r) !== key));
+                          }
+                        }}
+                        className="text-[11px] text-red-500 hover:underline shrink-0 ml-2"
+                      >清空本组</button>
+                    </div>
+                    {!collapsed && (
+                      <div className="p-2 space-y-2">
+                        {recs.map((rec, i) => (
+                          <div key={rec.id} className="border border-gray-200 rounded p-2 bg-white">
+                            <div className="flex items-center justify-between mb-1 gap-2">
+                              <span className="text-[11px] text-gray-600">
+                                #{i + 1}
+                                {rec.uploading
+                                  ? <span className="ml-2 text-blue-600">上传中…</span>
+                                  : rec.localOnly
+                                  ? <span className="ml-2 text-amber-600">仅本地</span>
+                                  : <span className="ml-2 text-green-600">已存云端</span>}
+                              </span>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className="text-[11px] text-gray-400">{new Date(rec.at).toLocaleTimeString()}</span>
+                                <button
+                                  onClick={() => setRecordings((prev) => prev.filter((r) => r.id !== rec.id))}
+                                  className="text-[11px] text-red-500 hover:underline"
+                                >删除</button>
+                              </div>
+                            </div>
+                            <audio controls src={rec.url} className="w-full" key={rec.id} />
+                            <div className="mt-1 flex items-center gap-2">
+                              <a href={rec.url} target="_blank" rel="noreferrer"
+                                className="text-[11px] text-[#007AFF] break-all truncate flex-1">{rec.url}</a>
+                              <button onClick={() => navigator.clipboard?.writeText(rec.url)}
+                                className="text-[11px] text-gray-500 hover:text-gray-700 underline shrink-0">复制</button>
+                            </div>
+                            {rec.transcribing && (
+                              <div className="mt-1 text-[11px] text-blue-600 flex items-center gap-1">
+                                <span className="inline-block w-2 h-2 rounded-full bg-blue-500 animate-pulse" />豆包 ASR 转写中…</div>
+                            )}
+                            {rec.transcript && (
+                              <div className="mt-1 p-2 bg-gray-50 border border-gray-200 rounded text-[12px] text-gray-800 leading-relaxed">
+                                <span className="text-[11px] text-gray-400">转写：</span>{rec.transcript}</div>
+                            )}
+                            {rec.transcriptError && (
+                              <div className="mt-1 flex items-center gap-2">
+                                <span className="text-[11px] text-red-500">转写失败：{rec.transcriptError}</span>
+                                <button onClick={async () => {
+                                  setRecordings((prev) => prev.map((r) => (r.id === rec.id ? { ...r, transcribing: true, transcriptError: undefined } : r)));
+                                  try {
+                                    const t = await transcribeAudio(rec.url, 'zh-CN');
+                                    setRecordings((prev) => prev.map((r) => (r.id === rec.id ? { ...r, transcribing: false, transcript: t } : r)));
+                                  } catch (e: any) {
+                                    setRecordings((prev) => prev.map((r) => (r.id === rec.id ? { ...r, transcribing: false, transcriptError: e.message } : r)));
+                                  }
+                                }} className="text-[11px] text-[#007AFF] hover:underline">重试</button>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
 
         <div className="flex items-center justify-end gap-2 mb-2">
              <button
@@ -992,8 +1099,9 @@ export function BehaviorPanel({
             </button>
              <button
               onClick={handleAIExpand}
-              disabled={isGenerating}
-              className="flex items-center gap-1 px-3 py-1.5 text-xs bg-purple-50 text-purple-700 border border-purple-200 rounded hover:bg-purple-100 disabled:opacity-50"
+              disabled={isGenerating || !user}
+              className="flex items-center gap-1 px-3 py-1.5 text-xs bg-purple-50 text-purple-700 border border-purple-200 rounded hover:bg-purple-100 disabled:opacity-50 disabled:cursor-not-allowed"
+              title={user ? "调用AI生成高危测试任务" : "请先登录"}
             >
               <Sparkles className="w-3 h-3" />
               {isGenerating ? '生成中...' : 'AI扩展任务'}

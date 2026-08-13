@@ -125,6 +125,10 @@ app.post('/make-server-5590af4c/export/all-records', async (c) => {
         const { user, error } = await verifyUserToken(body.access_token);
         if (error || !user) return c.text('Unauthorized', 401);
 
+        // 仅管理员可导出全员数据：后端强制校验，防止前端隐藏按钮被绕过
+        const isAdmin = user.email === 'admin@make.com' || user.role === 'admin';
+        if (!isAdmin) return c.text('Forbidden: admin only', 403);
+
         const records = await kv.getByPrefix(`submission:`);
         return new Response(jsonToCsv(records.filter(r => r !== null)), { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="all.csv"` }});
     } catch (err: any) {
