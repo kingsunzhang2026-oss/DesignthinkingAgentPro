@@ -366,7 +366,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <DesignProvider>
-        <div className="flex h-screen bg-[#F5F5F7] text-gray-900 overflow-hidden">
+        <div className="flex h-screen bg-background text-foreground overflow-hidden">
         {/* Left Sidebar */}
         {!leftSidebarCollapsed && (
           <Sidebar 
@@ -379,11 +379,11 @@ export default function App() {
 
         {/* Center Canvas */}
         <div className="flex-1 flex flex-col">
-          <header className="h-14 bg-white border-b border-gray-200 flex items-center px-6">
+          <header className="h-14 bg-card border-b border-border flex items-center px-6">
             <div className="flex items-center gap-3">
-              <div className="w-2 h-2 rounded-full bg-[#007AFF]"></div>
-              <h1 className="tracking-tight text-gray-900">Designthinking Agent Pro</h1>
-              <span className="text-sm text-gray-500">/ {currentProject.name} {currentProject.version}</span>
+              <div className="w-2 h-2 rounded-full bg-node-behavior"></div>
+              <h1 className="tracking-tight text-foreground">Designthinking Agent Pro</h1>
+              <span className="text-sm text-muted-foreground">/ {currentProject.name} {currentProject.version}</span>
             </div>
           </header>
           

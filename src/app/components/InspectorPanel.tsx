@@ -10,6 +10,7 @@ import { ScenarioData, TaskSequence } from '../App';
 import { supabase } from '../utils/supabase/client';
 import { uploadAudioReport } from '../services/storage';
 import { transcribeAudio } from '../services/asr';
+import { savePanelState } from '../services/panelArchive';
 
 /** 一段出声报告录音（跨节点切换持久化，挂在 InspectorPanel 上） */
 export interface Recording {
@@ -124,6 +125,26 @@ export function InspectorPanel({
     return () => sub.subscription.unsubscribe();
   }, []);
 
+  // 录音记录落库（含转写/账号/会话/时间戳）：写入 node_panel_data(records/global)，存档中心集中查看
+  useEffect(() => {
+    if (recordings.length === 0) return;
+    const t = setTimeout(() => {
+      savePanelState('default', 'global', 'records', {
+        recordings: recordings.map((r) => ({
+          id: r.id,
+          scenarioId: r.scenarioId,
+          account: r.account || '未登录',
+          sessionId: r.sessionId || '',
+          at: r.at,
+          url: r.url,
+          transcript: r.transcript || '',
+          status: r.transcript ? 'done' : r.transcribing ? 'transcribing' : r.localOnly ? 'local' : r.uploading ? 'uploading' : 'uploaded',
+        })),
+      }).catch((e) => console.warn('录音记录落库失败', e));
+    }, 900);
+    return () => clearTimeout(t);
+  }, [recordings]);
+
   const startRecording = async (scenarioId: string) => {
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -233,16 +254,16 @@ export function InspectorPanel({
   const activeKnowledgeBase = knowledgeBase.filter(doc => !doc.projectId || doc.projectId === activeProjectId);
 
   return (
-    <div className="w-[480px] bg-white border-l border-gray-200 flex flex-col overflow-hidden">
+    <div className="w-[480px] bg-card border-l border-border flex flex-col overflow-hidden">
       {/* Panel Header */}
-      <div className="h-14 border-b border-gray-200 flex items-center justify-between px-6">
-        <h2 className="text-gray-900">{getNodeTitle(selectedNode)}</h2>
+      <div className="h-14 border-b border-border flex items-center justify-between px-6">
+        <h2 className="text-foreground">{getNodeTitle(selectedNode)}</h2>
         <button
           onClick={onToggleCollapse}
-          className="p-1 hover:bg-gray-100 rounded transition-colors"
+          className="p-1 hover:bg-accent rounded transition-colors"
           title="收起侧边栏"
         >
-          <ChevronRight className="w-4 h-4 text-gray-600" />
+          <ChevronRight className="w-4 h-4 text-muted-foreground" />
         </button>
       </div>
 
@@ -256,8 +277,9 @@ export function InspectorPanel({
           />
         )}
         {nodeType === 'behavior' && (
-          <BehaviorPanel 
+          <BehaviorPanel
             activeProjectId={activeProjectId}
+            nodeId={selectedNode}
             scenarios={scenarios}
             onTaskStatsChange={onTaskStatsChange}
             taskStats={taskStats}
@@ -280,13 +302,20 @@ export function InspectorPanel({
                 ...prev,
                 alignment: { analyzed: true, deviations: deviations.length, deviationItems: deviations }
               }));
+              // 对齐分析结果落库（node_panel_data, alignment 类型），刷新/跨会话保留
+              if (selectedNode) {
+                savePanelState('default', selectedNode, 'alignment', {
+                  deviationItems: deviations,
+                  analyzedAt: new Date().toISOString(),
+                }).catch((e) => console.warn('对齐分析落库失败', e));
+              }
             }}
             knowledgeBase={activeKnowledgeBase}
             taskSequences={taskSequences}
           />
         )}
-        {nodeType === 'problem' && <ProblemNodePanel />}
-        {nodeType === 'solution' && <SolutionNodePanel />}
+        {nodeType === 'problem' && <ProblemNodePanel nodeId={selectedNode} />}
+        {nodeType === 'solution' && <SolutionNodePanel nodeId={selectedNode} />}
         {nodeType === 'value' && <ValueNodePanel />}
       </div>
     </div>

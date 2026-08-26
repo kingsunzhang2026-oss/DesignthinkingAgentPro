@@ -10,9 +10,10 @@
  *   // data 是上次存档的 JSON；save(data) 触发 upsert。
  */
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { supabaseAnon } from './storage';
 import { supabase } from '../utils/supabase/client';
 
-export type PanelType = 'context' | 'behavior' | 'alignment' | 'problem' | 'solution' | 'value';
+export type PanelType = 'context' | 'behavior' | 'alignment' | 'problem' | 'solution' | 'value' | 'records';
 
 export interface UsePanelArchiveOpts {
   projectId?: string;
@@ -38,7 +39,7 @@ export async function loadPanelState<T = any>(
   nodeId: string,
   panelType: PanelType,
 ): Promise<{ data: T | null; updatedAt: string | null }> {
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAnon
     .from('node_panel_data')
     .select('data, updated_at')
     .eq('project_id', projectId)
@@ -59,14 +60,20 @@ export async function savePanelState<T = any>(
   panelType: PanelType,
   payload: T,
 ): Promise<string> {
-  const { data, error } = await supabase
+  // 自动附带存档人 + 时间戳元信息，供「存档中心」集中标注（用户信息 + 时间）
+  const { data: { user } } = await supabase.auth.getUser().catch(() => ({ data: { user: null } as any }));
+  const enriched = {
+    ...(payload as object),
+    _meta: { user: user?.email || '未登录', savedAt: new Date().toISOString() },
+  } as any;
+  const { data, error } = await supabaseAnon
     .from('node_panel_data')
     .upsert(
       {
         project_id: projectId,
         node_id: nodeId,
         panel_type: panelType,
-        data: payload as any,
+        data: enriched,
         updated_at: new Date().toISOString(),
       },
       { onConflict: 'project_id,node_id,panel_type' },
@@ -82,7 +89,7 @@ export async function deletePanelState(
   nodeId: string,
   panelType: PanelType,
 ): Promise<void> {
-  const { error } = await supabase
+  const { error } = await supabaseAnon
     .from('node_panel_data')
     .delete()
     .eq('project_id', projectId)
@@ -101,7 +108,7 @@ export interface PanelStateRow {
 
 /** 加载某项目下所有节点存档（用于导出设计报告时汇总） */
 export async function loadAllPanelStates(projectId: string): Promise<PanelStateRow[]> {
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAnon
     .from('node_panel_data')
     .select('project_id, node_id, panel_type, data, updated_at')
     .eq('project_id', projectId)

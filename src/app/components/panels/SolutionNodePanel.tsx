@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Upload, X, File, Box, Image as ImageIcon, Loader2, Sparkles, Trash2,
-  Download, Eye, AlertCircle, Layers, Maximize2, Mic, Square
+  Download, Eye, AlertCircle, Layers, Maximize2, Mic, Square, Save,
 } from 'lucide-react';
 import { ModelViewer } from '../ModelViewer';
 import {
@@ -61,11 +61,11 @@ const VIEW_LABEL: Record<string, string> = { front: '前', back: '后', left: '�
 
 function assetTypeLabel(t: AssetType): { text: string; cls: string } {
   switch (t) {
-    case 'generated_glb': return { text: 'AI 生成', cls: 'bg-orange-100 text-[#CC7700]' };
-    case 'uploaded_glb': return { text: 'GLB 模型', cls: 'bg-blue-100 text-blue-700' };
-    case 'reference_image': return { text: '参考图', cls: 'bg-green-100 text-green-700' };
-    case 'cad_step': return { text: 'CAD/STP', cls: 'bg-orange-100 text-[#FF9500]' };
-    default: return { text: '文件', cls: 'bg-gray-100 text-gray-600' };
+    case 'generated_glb': return { text: 'AI 生成', cls: 'bg-node-solution/10 text-node-solution' };
+    case 'uploaded_glb': return { text: 'GLB 模型', cls: 'bg-node-behavior/10 text-node-behavior' };
+    case 'reference_image': return { text: '参考图', cls: 'bg-node-context/10 text-node-context' };
+    case 'cad_step': return { text: 'CAD/STP', cls: 'bg-node-solution/10 text-node-solution' };
+    default: return { text: '文件', cls: 'bg-muted text-muted-foreground' };
   }
 }
 function assetIsViewable(t: AssetType): boolean {
@@ -78,7 +78,7 @@ function seedPrompt(base: string, idx: number): string {
 
 export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
   const { isRecording, startRecording, stopRecording } = useAudioRecorder();
-  const { useDelivery, openCompare } = useDesignStore();
+  const { useDelivery, openCompare, registerOutput, getOutput } = useDesignStore();
   const delivery = useDelivery(nodeId);
 
   // ---- 存档 ----
@@ -143,7 +143,13 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
         id: v.id, label: v.label, prompt: v.prompt || '',
         status: v.assetId ? 'done' : 'idle', assetId: v.assetId,
       }));
-      setVariants(restored);
+      if (restored.length > 0) {
+        setVariants(restored);
+      } else {
+        // 无存档方案：按数量自动播种方案卡片，保证一进来就有可操作的「生成」按钮
+        const cnt = archived.variantCount || 1;
+        setVariants(reconcileVariants(cnt, archived.basePrompt || '', []));
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [archived, archLoading]);
@@ -173,6 +179,16 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [delivery?.token]);
+
+  // 将当前 variants 持续登记到 store，供"方案→行为"连线投递时读取
+  useEffect(() => {
+    registerOutput(nodeId, 'solution', {
+      variants: variants.map((v) => ({
+        id: v.id, label: v.label, prompt: v.prompt, previewUrl: v.previewUrl, assetId: v.assetId,
+      })),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodeId, variants]);
 
   // 资产加载后，把已存档的 variant 成果映射回预览地址
   useEffect(() => {
@@ -211,10 +227,25 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
   };
 
   // ---------- 单个 variant 生成 ----------
+  // 生成进度/结果主动发布到全局 store（组件卸载后仍生效，行为节点能同步到最新方案），并自动存档
+  const publishVariants = useCallback((vid: string, patch: Partial<VariantDef>) => {
+    const cur = getOutput(nodeId);
+    const base = (cur?.variants && Array.isArray(cur.variants) && cur.variants.length > 0 ? cur.variants : variants) as VariantDef[];
+    const next = base.map((v) => (v.id === vid ? { ...v, ...patch } : v));
+    registerOutput(nodeId, 'solution', {
+      variants: next.map((v) => ({ id: v.id, label: v.label, prompt: v.prompt, previewUrl: v.previewUrl, assetId: v.assetId })),
+    });
+    save({
+      basePrompt, genMode, tier, variantCount, strategy,
+      variants: next.map((v) => ({ id: v.id, label: v.label, prompt: v.prompt, assetId: v.assetId })),
+    }).catch(() => {});
+  }, [nodeId, getOutput, registerOutput, variants, basePrompt, genMode, tier, variantCount, strategy, save]);
+
   const generateVariant = async (variantId: string) => {
     const v = variants.find((x) => x.id === variantId);
     if (!v) return;
     setVariants((prev) => prev.map((x) => x.id === variantId ? { ...x, status: 'generating', error: undefined } : x));
+    publishVariants(variantId, { status: 'generating', error: undefined });
     setGenError('');
     try {
       if (genMode === 'text_to_model' && !v.prompt.trim()) throw new Error(`方案 ${v.label} 请输入生成描述`);
@@ -247,10 +278,12 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
         finalUrl = asset.storage_url || '';
         setAssets((prev) => [asset, ...prev]);
         setVariants((prev) => prev.map((x) => x.id === variantId ? { ...x, assetId: asset.id, previewUrl: finalUrl, status: 'done' } : x));
+        publishVariants(variantId, { assetId: asset.id, previewUrl: finalUrl, status: 'done' });
       } catch (e) {
         console.warn('GLB 转存失败，回退代理预览', e);
         finalUrl = getProxiedUrl(remoteModelUrl);
         setVariants((prev) => prev.map((x) => x.id === variantId ? { ...x, previewUrl: finalUrl, status: 'done' } : x));
+        publishVariants(variantId, { previewUrl: finalUrl, status: 'done' });
       }
 
       if (finalUrl) {
@@ -260,8 +293,10 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
       setGenStatusText(`方案 ${v.label} 生成完成 ✅`);
     } catch (e: any) {
       console.error(e);
-      setVariants((prev) => prev.map((x) => x.id === variantId ? { ...x, status: 'error', error: e?.message || String(e) } : x));
-      setGenError(`方案 ${v.label}：${e?.message || e}`);
+      const errMsg = e?.message || String(e);
+      setVariants((prev) => prev.map((x) => x.id === variantId ? { ...x, status: 'error', error: errMsg } : x));
+      publishVariants(variantId, { status: 'error', error: errMsg });
+      setGenError(`方案 ${v.label}：${errMsg}`);
       setGenStatusText('生成失败');
     }
   };
@@ -269,6 +304,10 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
   // ---------- 生成全部（并发 / 顺序）----------
   const generateAll = async () => {
     if (generatingAll) return;
+    if (variants.length === 0) {
+      setGenError('请先在上方选择方案数量（1 / 3 / 5 个）生成方案卡片，再点击「生成全部方案」');
+      return;
+    }
     setGeneratingAll(true);
     try {
       if (strategy === 'concurrent') {
@@ -332,6 +371,27 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
     }
   };
 
+  // 将某个资产"保存"：绑定到方案卡片（优先未绑定的 variant）并立即写入节点存档
+  const handleSaveAssetToArchive = (asset: PrototypeAsset) => {
+    if (!asset.storage_url) { alert('该资产暂无云端地址，无法保存'); return; }
+    const target = variants.find((v) => !v.assetId) || variants[0];
+    if (!target) {
+      setGenError('请先在上方选择方案数量（1/3/5 个）生成方案卡片，再保存资产');
+      return;
+    }
+    const updated = variants.map((v) =>
+      v.id === target.id
+        ? { ...v, assetId: asset.id, previewUrl: asset.storage_url || undefined, status: 'done' as const, error: undefined }
+        : v
+    );
+    setVariants(updated);
+    publishVariants(target.id, { assetId: asset.id, previewUrl: asset.storage_url || undefined, status: 'done' });
+    setPreviewUrl(asset.storage_url);
+    setPreviewName(`${asset.name} · 已绑定方案 ${target.label}`);
+    setGenStatusText(`已将「${asset.name}」绑定到方案 ${target.label} 并保存到存档 ✅`);
+    setGenError('');
+  };
+
   const onSingleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0] || null;
     setSingleImage(f);
@@ -352,21 +412,21 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
   return (
     <div className="flex flex-col h-full">
       {/* 顶部存档栏 */}
-      <div className="border-b border-gray-200 bg-gray-50 px-6 py-2 flex items-center justify-between">
-        <span className="text-xs text-gray-500">方案节点</span>
+      <div className="border-b border-border bg-muted px-6 py-2 flex items-center justify-between">
+        <span className="text-xs text-muted-foreground">方案节点</span>
         <ArchiveButton data={{ basePrompt, genMode, tier, variantCount, strategy, variants }} onSave={handleSave} saving={saving} lastSavedAt={lastSavedAt} />
       </div>
 
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
         <div>
           <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm text-gray-900">方案节点</h3>
+            <h3 className="text-sm text-foreground">方案节点</h3>
             <button
               onClick={() => isRecording ? stopRecording() : startRecording()}
               className={`flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded transition-all ${
                 isRecording
-                  ? 'bg-red-100 text-red-700 animate-pulse border border-red-200 shadow-sm'
-                  : 'bg-[#007AFF]/10 text-[#007AFF] hover:bg-[#007AFF]/20'
+                  ? 'bg-destructive/10 text-destructive animate-pulse border border-destructive/30 shadow-sm'
+                  : 'bg-node-behavior/10 text-node-behavior hover:bg-node-behavior/20'
               }`}
               title="用于在构思方案时收集口语报告记录"
             >
@@ -377,29 +437,29 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
               )}
             </button>
           </div>
-          <p className="text-xs text-gray-600 mb-4">
+          <p className="text-xs text-muted-foreground mb-4">
             通过 Tripo3D 生成 3D 原型；支持 1/3/5 个复合方案，可并发或顺序生成后全屏对比
           </p>
         </div>
 
         {/* 连线投递提示 */}
         {deliveryBanner && (
-          <div className="flex items-center gap-2 px-3 py-2 bg-orange-50 border border-orange-200 rounded-lg text-xs text-gray-700">
-            <Sparkles className="w-3.5 h-3.5 text-[#FF9500]" />
+          <div className="flex items-center gap-2 px-3 py-2 bg-node-solution/10 border border-node-solution/20 rounded-lg text-xs text-foreground">
+            <Sparkles className="w-3.5 h-3.5 text-node-solution" />
             <span>{deliveryBanner}</span>
           </div>
         )}
 
         {/* ===== Tripo3D 生成 ===== */}
-        <div className="border border-orange-200 rounded-lg p-4 bg-orange-50/40">
+        <div className="border border-node-solution/20 rounded-lg p-4 bg-node-solution/10">
           <div className="flex items-center gap-2 mb-3">
-            <Sparkles className="w-4 h-4 text-[#FF9500]" />
-            <h4 className="text-sm text-gray-800">Tripo3D AI 生成 3D 原型</h4>
+            <Sparkles className="w-4 h-4 text-node-solution" />
+            <h4 className="text-sm text-foreground">Tripo3D AI 生成 3D 原型</h4>
           </div>
 
           {/* 复合方案数量 */}
           <div className="flex items-center gap-3 mb-3">
-            <span className="text-xs text-gray-600">方案数量：</span>
+            <span className="text-xs text-muted-foreground">方案数量：</span>
             {[1, 3, 5].map((n) => (
               <button
                 key={n}
@@ -408,13 +468,13 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
                   setVariants((prev) => reconcileVariants(n, basePrompt, prev));
                 }}
                 className={`px-3 py-1 rounded text-xs border ${
-                  variantCount === n ? 'border-[#FF9500] bg-[#FF9500] text-white' : 'border-gray-200 bg-white text-gray-600 hover:border-orange-300'
+                  variantCount === n ? 'border-node-solution bg-node-solution text-white' : 'border-border bg-card text-muted-foreground hover:border-node-solution'
                 }`}
               >
                 {n} 个
               </button>
             ))}
-            <span className="text-xs text-gray-400">（每个为一独立子智能体）</span>
+            <span className="text-xs text-muted-foreground">（每个为一独立子智能体）</span>
           </div>
 
           {/* 模式切换 */}
@@ -424,7 +484,7 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
                 key={m.key}
                 onClick={() => setGenMode(m.key)}
                 className={`flex-1 px-2 py-2 rounded text-xs border transition-colors ${
-                  genMode === m.key ? 'border-[#FF9500] bg-[#FF9500] text-white' : 'border-gray-200 bg-white text-gray-600 hover:border-orange-300'
+                  genMode === m.key ? 'border-node-solution bg-node-solution text-white' : 'border-border bg-card text-muted-foreground hover:border-node-solution'
                 }`}
               >
                 {m.label}
@@ -434,15 +494,15 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
 
           {/* 质量 */}
           <div className="flex items-center gap-3 mb-3">
-            <span className="text-xs text-gray-600">质量：</span>
-            <button onClick={() => setTier('H')} className={`px-3 py-1 rounded text-xs border ${tier === 'H' ? 'border-[#FF9500] bg-orange-50 text-[#CC7700]' : 'border-gray-200 text-gray-500'}`}>H 高保真</button>
-            <button onClick={() => setTier('P')} className={`px-3 py-1 rounded text-xs border ${tier === 'P' ? 'border-[#FF9500] bg-orange-50 text-[#CC7700]' : 'border-gray-200 text-gray-500'}`}>P 低多边形</button>
+            <span className="text-xs text-muted-foreground">质量：</span>
+            <button onClick={() => setTier('H')} className={`px-3 py-1 rounded text-xs border ${tier === 'H' ? 'border-node-solution bg-node-solution/10 text-node-solution' : 'border-border text-muted-foreground'}`}>H 高保真</button>
+            <button onClick={() => setTier('P')} className={`px-3 py-1 rounded text-xs border ${tier === 'P' ? 'border-node-solution bg-node-solution/10 text-node-solution' : 'border-border text-muted-foreground'}`}>P 低多边形</button>
           </div>
 
           {/* 基础提示词（播种各方案） */}
           {genMode === 'text_to_model' && (
             <div className="mb-3">
-              <label className="block text-xs text-gray-600 mb-1">基础提示词（自动播种到各方案，可单独修改）</label>
+              <label className="block text-xs text-muted-foreground mb-1">基础提示词（自动播种到各方案，可单独修改）</label>
               <textarea
                 value={basePrompt}
                 onChange={(e) => {
@@ -451,7 +511,7 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
                   setVariants((prev) => prev.map((x, i) => ({ ...x, prompt: v ? seedPrompt(v, VARIANT_LABELS.indexOf(x.label)) : '' })));
                 }}
                 rows={2}
-                className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-[#FFB84D]"
+                className="w-full px-2 py-1.5 text-sm border border-border rounded focus:outline-none focus:ring-2 focus:ring-node-solution"
                 placeholder="例如：小钳智能双极电刀 V2 的握把与钳头，符合人体工程学"
               />
             </div>
@@ -460,7 +520,7 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
           {genMode === 'image_to_model' && (
             <div className="mb-3">
               <input type="file" accept="image/*" onChange={onSingleImageChange} className="hidden" id="single-img" />
-              <label htmlFor="single-img" className="flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 rounded-lg p-4 cursor-pointer hover:border-[#FF9500] text-gray-500 text-xs">
+              <label htmlFor="single-img" className="flex items-center justify-center gap-2 border-2 border-dashed border-border rounded-lg p-4 cursor-pointer hover:border-node-solution text-muted-foreground text-xs">
                 {singlePreview ? <img src={singlePreview} alt="ref" className="h-16 w-16 object-cover rounded" /> : <><ImageIcon className="w-5 h-5" /> 点击上传单张参考图</>}
               </label>
             </div>
@@ -471,7 +531,7 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
               {VIEWS.map((vw) => (
                 <div key={vw}>
                   <input type="file" accept="image/*" onChange={(e) => onMultiviewChange(vw, e)} className="hidden" id={`mv-${vw}`} />
-                  <label htmlFor={`mv-${vw}`} className="flex flex-col items-center justify-center gap-1 border-2 border-dashed border-gray-300 rounded-lg p-2 cursor-pointer hover:border-[#FF9500] text-gray-500">
+                  <label htmlFor={`mv-${vw}`} className="flex flex-col items-center justify-center gap-1 border-2 border-dashed border-border rounded-lg p-2 cursor-pointer hover:border-node-solution text-muted-foreground">
                     {multiviewPreviews[vw] ? <img src={multiviewPreviews[vw]} alt={vw} className="h-12 w-12 object-cover rounded" /> : <ImageIcon className="w-4 h-4" />}
                     <span className="text-[10px]">{VIEW_LABEL[vw]}视图</span>
                   </label>
@@ -483,19 +543,19 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
           {/* 各方案卡片 */}
           <div className="space-y-2">
             {variants.map((v) => (
-              <div key={v.id} className="border border-gray-200 rounded-lg p-3 bg-white">
+              <div key={v.id} className="border border-border rounded-lg p-3 bg-card">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    <span className="w-6 h-6 rounded bg-[#FF9500] text-white text-xs flex items-center justify-center font-medium">{v.label}</span>
-                    <span className="text-xs text-gray-500">方案 {v.label}</span>
-                    {v.status === 'generating' && <Loader2 className="w-3.5 h-3.5 animate-spin text-[#FF9500]" />}
-                    {v.status === 'done' && <span className="text-[10px] px-2 py-0.5 rounded bg-green-100 text-green-700">已完成</span>}
-                    {v.status === 'error' && <span className="text-[10px] px-2 py-0.5 rounded bg-red-100 text-red-700">失败</span>}
+                    <span className="w-6 h-6 rounded bg-node-solution text-white text-xs flex items-center justify-center font-medium">{v.label}</span>
+                    <span className="text-xs text-muted-foreground">方案 {v.label}</span>
+                    {v.status === 'generating' && <Loader2 className="w-3.5 h-3.5 animate-spin text-node-solution" />}
+                    {v.status === 'done' && <span className="text-[10px] px-2 py-0.5 rounded bg-node-context/10 text-node-context">已完成</span>}
+                    {v.status === 'error' && <span className="text-[10px] px-2 py-0.5 rounded bg-destructive/10 text-destructive">失败</span>}
                   </div>
                   <button
                     onClick={() => generateVariant(v.id)}
                     disabled={v.status === 'generating' || generatingAll}
-                    className="text-xs px-2.5 py-1 rounded bg-[#FF9500] text-white hover:bg-[#E68600] disabled:opacity-50"
+                    className="text-xs px-2.5 py-1 rounded bg-node-solution text-white hover:bg-node-solution/80 disabled:opacity-50"
                   >
                     生成
                   </button>
@@ -505,11 +565,11 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
                     value={v.prompt}
                     onChange={(e) => setVariants((prev) => prev.map((x) => x.id === v.id ? { ...x, prompt: e.target.value } : x))}
                     rows={2}
-                    className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-[#FFB84D]"
+                    className="w-full px-2 py-1.5 text-xs border border-border rounded focus:outline-none focus:ring-1 focus:ring-node-solution"
                     placeholder={`方案 ${v.label} 的描述`}
                   />
                 )}
-                {v.error && <p className="mt-1 text-[10px] text-red-600">{v.error}</p>}
+                {v.error && <p className="mt-1 text-[10px] text-destructive">{v.error}</p>}
               </div>
             ))}
           </div>
@@ -519,7 +579,7 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
             <button
               onClick={generateAll}
               disabled={generatingAll}
-              className="flex-1 bg-[#FF9500] hover:bg-[#E68600] disabled:opacity-50 text-white px-3 py-2 rounded text-sm flex items-center justify-center gap-2"
+              className="flex-1 bg-node-solution hover:bg-node-solution/80 disabled:opacity-50 text-white px-3 py-2 rounded text-sm flex items-center justify-center gap-2"
             >
               {generatingAll ? <Loader2 className="w-4 h-4 animate-spin" /> : <Layers className="w-4 h-4" />}
               {generatingAll ? '生成中…' : '生成全部方案'}
@@ -527,39 +587,50 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
             <button
               onClick={() => openCompare(nodeId)}
               title="全屏对比多个模型"
-              className="px-3 py-2 rounded text-sm border border-[#FF9500] text-[#FF9500] hover:bg-orange-50 flex items-center gap-1"
+              className="px-3 py-2 rounded text-sm border border-node-solution text-node-solution hover:bg-node-solution/10 flex items-center gap-1"
             >
               <Maximize2 className="w-4 h-4" /> 对比
             </button>
           </div>
 
           {genStatusText && (
-            <p className="mt-2 text-xs text-gray-600">{genStatusText}</p>
+            <p className="mt-2 text-xs text-muted-foreground">{genStatusText}</p>
           )}
           {genError && (
-            <div className="mt-2 text-xs text-red-600 bg-red-50 border border-red-100 rounded p-2 flex items-start gap-1.5">
+            <div className="mt-2 text-xs text-destructive bg-destructive/10 border border-destructive/30 rounded p-2 flex items-start gap-1.5">
               <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
               <span className="break-all">{genError}</span>
             </div>
           )}
-          <p className="mt-1 text-[10px] text-gray-400">
+          <p className="mt-1 text-[10px] text-muted-foreground">
             提示：STP/STEP 不能直接生成 3D，可作为原型存档；图生/多视图需先上传图片。生成消耗 Tripo 额度。双击画布中的方案节点也可进入全屏对比。
           </p>
         </div>
 
         {/* ===== 3D 模型预览 ===== */}
         <div>
-          <h4 className="text-sm text-gray-700 mb-2 flex items-center gap-2">
-            <Box className="w-4 h-4 text-[#FF9500]" /> 3D 模型预览
-          </h4>
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="text-sm text-foreground flex items-center gap-2">
+              <Box className="w-4 h-4 text-node-solution" /> 3D 模型预览
+            </h4>
+            {previewUrl && (
+              <button
+                onClick={() => { setPreviewUrl(null); setPreviewName(''); }}
+                className="flex items-center gap-1 px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground border border-border rounded hover:bg-accent"
+                title="关闭预览窗口"
+              >
+                <X className="w-3.5 h-3.5" /> 关闭
+              </button>
+            )}
+          </div>
           {previewUrl ? (
             <div>
               <ModelViewer src={previewUrl} alt={previewName} height={320} />
-              <p className="mt-1 text-xs text-gray-500 truncate">{previewName}</p>
+              <p className="mt-1 text-xs text-muted-foreground truncate">{previewName}</p>
             </div>
           ) : (
-            <div className="border border-dashed border-gray-300 rounded-lg h-[180px] flex items-center justify-center text-gray-400 text-xs">
-              暂无模型可预览（生成或选择 GLB 资产后在此显示）
+            <div className="border border-dashed border-border rounded-lg h-[180px] flex items-center justify-center text-muted-foreground text-xs">
+              暂无模型可预览（生成、选择 GLB 资产，或点击资产卡片的「预览」切换到此窗口）
             </div>
           )}
         </div>
@@ -567,8 +638,8 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
         {/* ===== 原型资产 ===== */}
         <div>
           <div className="flex items-center justify-between mb-3">
-            <h4 className="text-sm text-gray-700">原型资产</h4>
-            <label className="text-sm text-[#007AFF] hover:text-[#0051D5] cursor-pointer flex items-center gap-1">
+            <h4 className="text-sm text-foreground">原型资产</h4>
+            <label className="text-sm text-node-behavior hover:text-node-behavior/80 cursor-pointer flex items-center gap-1">
               <Upload className="w-3.5 h-3.5" />
               {uploading ? '上传中…' : '上传文件'}
               <input ref={fileInputRef} type="file" multiple accept=".stp,.step,.glb,.gltf,.png,.jpg,.jpeg,.webp,.bmp" className="hidden" onChange={(e) => handleAssetUpload(e.target.files)} />
@@ -576,44 +647,49 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
           </div>
 
           {loadingAssets ? (
-            <p className="text-xs text-gray-400">加载资产中…</p>
+            <p className="text-xs text-muted-foreground">加载资产中…</p>
           ) : assets.length === 0 ? (
-            <p className="text-xs text-gray-400">尚无原型资产，可上传 STP / GLB / 图片，或用上方 Tripo3D 生成。</p>
+            <p className="text-xs text-muted-foreground">尚无原型资产，可上传 STP / GLB / 图片，或用上方 Tripo3D 生成。</p>
           ) : (
             <div className="space-y-3">
               {assets.map((a) => {
                 const tl = assetTypeLabel(a.type);
                 const viewable = assetIsViewable(a.type);
                 return (
-                  <div key={a.id} className="border border-gray-200 rounded-lg p-3 bg-white">
+                  <div key={a.id} className="border border-border rounded-lg p-3 bg-card">
                     <div className="flex items-start justify-between">
                       <div className="flex items-start gap-3 flex-1 min-w-0">
-                        <div className="w-10 h-10 bg-orange-100 rounded flex items-center justify-center flex-shrink-0">
-                          {a.type === 'reference_image' ? <ImageIcon className="w-5 h-5 text-green-600" />
-                            : viewable ? <Box className="w-5 h-5 text-blue-600" />
-                              : <File className="w-5 h-5 text-[#FF9500]" />}
+                        <div className="w-10 h-10 bg-node-solution/10 rounded flex items-center justify-center flex-shrink-0">
+                          {a.type === 'reference_image' ? <ImageIcon className="w-5 h-5 text-node-context" />
+                            : viewable ? <Box className="w-5 h-5 text-node-behavior" />
+                              : <File className="w-5 h-5 text-node-solution" />}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
-                            <h5 className="text-sm text-gray-900 truncate">{a.name}</h5>
+                            <h5 className="text-sm text-foreground truncate">{a.name}</h5>
                             <span className={`text-[10px] px-2 py-0.5 rounded ${tl.cls}`}>{tl.text}</span>
                           </div>
-                          <p className="text-xs text-gray-500 truncate">{new Date(a.created_at).toLocaleString()}</p>
-                          {a.type === 'reference_image' && a.storage_url && <img src={a.storage_url} alt={a.name} className="mt-2 h-16 rounded border border-gray-200" />}
+                          <p className="text-xs text-muted-foreground truncate">{new Date(a.created_at).toLocaleString()}</p>
+                          {a.type === 'reference_image' && a.storage_url && <img src={a.storage_url} alt={a.name} className="mt-2 h-16 rounded border border-border" />}
                         </div>
                       </div>
-                      <button onClick={() => handleRemoveAsset(a)} className="p-1 hover:bg-red-100 rounded flex-shrink-0 ml-2" title="删除">
-                        <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                      <button onClick={() => handleRemoveAsset(a)} className="p-1 hover:bg-destructive/10 rounded flex-shrink-0 ml-2" title="删除">
+                        <Trash2 className="w-3.5 h-3.5 text-destructive" />
                       </button>
                     </div>
                     <div className="flex gap-3 mt-2 pl-[52px]">
                       {viewable && a.storage_url && (
-                        <button onClick={() => handlePreviewAsset(a)} className="text-xs text-[#007AFF] hover:text-[#0051D5] flex items-center gap-1">
+                        <button onClick={() => handlePreviewAsset(a)} className="text-xs text-node-behavior hover:text-node-behavior/80 flex items-center gap-1" title="在上方预览窗口查看此模型（可随时切换）">
                           <Eye className="w-3.5 h-3.5" /> 预览
                         </button>
                       )}
                       {a.storage_url && (
-                        <a href={a.storage_url} target="_blank" rel="noreferrer" download className="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1">
+                        <button onClick={() => handleSaveAssetToArchive(a)} className="text-xs text-node-solution hover:text-node-solution/80 flex items-center gap-1" title="绑定到方案卡片并写入节点存档">
+                          <Save className="w-3.5 h-3.5" /> 保存
+                        </button>
+                      )}
+                      {a.storage_url && (
+                        <a href={a.storage_url} target="_blank" rel="noreferrer" download className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
                           <Download className="w-3.5 h-3.5" /> 下载
                         </a>
                       )}

@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Smartphone, Circle, Save, Plus, Trash2, Sparkles, AlertTriangle, FileText, CloudUpload, Download, Users, Loader2, Mic, Square } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Smartphone, Circle, Save, Plus, Trash2, Sparkles, AlertTriangle, FileText, CloudUpload, Download, Users, Loader2, Mic, Square, FileJson, FileSpreadsheet, Cloud, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
 import { ScenarioData, TaskSequence, Task, RecordPoint, BranchCard } from '../../App';
 import type { Recording } from '../InspectorPanel';
 import { generateExtendedTask } from '../../services/aiScenarios';
@@ -7,6 +7,8 @@ import { supabase } from '../../utils/supabase/client';
 import { projectId, publicAnonKey } from '../../utils/supabase/info';
 import { transcribeAudio } from '../../services/asr';
 import { exportRecordingsByAccount, exportFullReport } from '../../services/docExport';
+import { loadPanelState, savePanelState } from '../../services/panelArchive';
+import { useDesignStore } from '../../services/designStore';
 
 // 23 个手部解剖分区（与 /public/hand-anatomy.png 中 a-v 标注一一对应）
 // 坐标系：viewBox 0 0 582 720（图片实际像素 582×720）
@@ -23,41 +25,43 @@ interface HandRegion {
 }
 
 const HAND_REGIONS: HandRegion[] = [
-  // 食指（最左长指）
-  { id: 'd', finger: '食指', section: '远节', label: '食指 DIP（远节指间）', points: '258,30 295,30 295,82 258,82', centerX: 276, centerY: 56 },
-  { id: 'h', finger: '食指', section: '中节', label: '食指 PIP（中节指间）', points: '258,82 295,82 295,182 258,182', centerX: 276, centerY: 132 },
-  { id: 'l', finger: '食指', section: '近节', label: '食指近节指骨', points: '258,182 295,182 295,278 258,278', centerX: 276, centerY: 230 },
-  { id: 'p', finger: '食指', section: '掌指', label: '食指掌指关节区', points: '220,278 295,278 295,348 220,348', centerX: 257, centerY: 313 },
-  // 中指（中间）
-  { id: 'c', finger: '中指', section: '远节', label: '中指 DIP（远节）', points: '330,12 380,12 380,90 330,90', centerX: 355, centerY: 51 },
-  { id: 'g', finger: '中指', section: '中节', label: '中指 PIP（中节）', points: '330,90 380,90 380,202 330,202', centerX: 355, centerY: 146 },
-  { id: 'k', finger: '中指', section: '近节', label: '中指近节', points: '325,202 380,202 380,290 325,290', centerX: 352, centerY: 246 },
-  { id: 'o', finger: '中指', section: '掌指', label: '中指掌指关节区', points: '305,290 380,290 380,362 305,362', centerX: 342, centerY: 326 },
-  // 无名指
-  { id: 'b', finger: '无名指', section: '远节', label: '无名指 DIP', points: '415,35 460,35 460,115 415,115', centerX: 437, centerY: 75 },
-  { id: 'f', finger: '无名指', section: '中节', label: '无名指 PIP', points: '415,115 460,115 460,218 415,218', centerX: 437, centerY: 166 },
-  { id: 'g2', finger: '无名指', section: '近节', label: '无名指近节', points: '390,218 448,218 448,298 390,298', centerX: 419, centerY: 258 },
-  // 小指（最右短指）
-  { id: 'a', finger: '小指', section: '远节', label: '小指 DIP', points: '475,85 515,85 515,180 475,180', centerX: 495, centerY: 132 },
-  { id: 'e', finger: '小指', section: '中节', label: '小指 PIP', points: '478,180 515,180 515,288 478,288', centerX: 496, centerY: 234 },
-  { id: 'i', finger: '小指', section: '近节', label: '小指近节', points: '455,288 505,288 505,362 455,362', centerX: 480, centerY: 325 },
-  { id: 'm', finger: '小指', section: '掌指', label: '小指掌指关节区', points: '405,362 510,362 510,418 405,418', centerX: 457, centerY: 390 },
-  // 拇指（左侧外伸）
-  { id: 'v', finger: '拇指', section: '远节', label: '拇指远节（IP）', points: '35,338 115,338 115,410 35,410', centerX: 75, centerY: 374 },
-  { id: 'u', finger: '拇指', section: '近节', label: '拇指近节（掌指）', points: '95,410 175,410 175,478 95,478', centerX: 135, centerY: 444 },
+  // ========== 坐标已按新底图 (582×720) a-v 字母位置精准校准 ==========
+  // 食指（指尖到掌指）— 第二指（左起），x≈190-260
+  { id: 'd', finger: '食指', section: '远节', label: '食指 DIP（远节指间）', points: '190,115 258,115 258,158 190,158', centerX: 224, centerY: 136 },
+  { id: 'h', finger: '食指', section: '中节', label: '食指 PIP（中节指间）', points: '190,158 258,158 258,215 190,215', centerX: 224, centerY: 186 },
+  { id: 'l', finger: '食指', section: '近节', label: '食指近节指骨',       points: '190,215 258,215 258,290 190,290', centerX: 224, centerY: 252 },
+  { id: 'p', finger: '食指', section: '掌指', label: '食指掌指关节区',     points: '190,290 275,290 275,355 190,355', centerX: 232, centerY: 322 },
+  // 中指 — 最长，x≈278-345
+  { id: 'c', finger: '中指', section: '远节', label: '中指 DIP（远节）',   points: '278,78 345,78 345,130 278,130', centerX: 311, centerY: 104 },
+  { id: 'g', finger: '中指', section: '中节', label: '中指 PIP（中节）',   points: '278,130 345,130 345,195 278,195', centerX: 311, centerY: 162 },
+  { id: 'k', finger: '中指', section: '近节', label: '中指近节',           points: '278,195 345,195 345,280 278,280', centerX: 311, centerY: 237 },
+  { id: 'o', finger: '中指', section: '掌指', label: '中指掌指关节区',     points: '278,280 345,280 345,345 278,345', centerX: 311, centerY: 312 },
+  // 无名指 — x≈345-410
+  { id: 'b', finger: '无名指', section: '远节', label: '无名指 DIP',        points: '345,115 410,115 410,160 345,160', centerX: 377, centerY: 137 },
+  { id: 'f', finger: '无名指', section: '中节', label: '无名指 PIP',        points: '345,160 410,160 410,220 345,220', centerX: 377, centerY: 190 },
+  { id: 'j', finger: '无名指', section: '近节', label: '无名指近节',        points: '345,220 410,220 410,300 345,300', centerX: 377, centerY: 260 },
+  // 小指 — x≈425-488
+  { id: 'a', finger: '小指', section: '远节', label: '小指 DIP',            points: '425,162 488,162 488,212 425,212', centerX: 456, centerY: 187 },
+  { id: 'e', finger: '小指', section: '中节', label: '小指 PIP',            points: '425,212 488,212 488,272 425,272', centerX: 456, centerY: 242 },
+  { id: 'i', finger: '小指', section: '近节', label: '小指近节',            points: '425,272 488,272 488,335 425,335', centerX: 456, centerY: 303 },
+  { id: 'm', finger: '小指', section: '掌指', label: '小指掌指关节区',       points: '410,335 488,335 488,400 410,400', centerX: 449, centerY: 367 },
+  // 拇指 — 左侧外伸，x≈55-200
+  { id: 'v', finger: '拇指', section: '远节', label: '拇指远节（IP）',       points: '55,340 145,340 145,400 55,400', centerX: 100, centerY: 370 },
+  { id: 'u', finger: '拇指', section: '近节', label: '拇指近节（掌指）',     points: '115,400 200,400 200,455 115,455', centerX: 157, centerY: 427 },
   // 掌部
-  { id: 't', finger: '掌部', section: '大鱼际', label: '大鱼际肌（拇指球肌）', points: '95,478 270,478 270,625 95,625', centerX: 182, centerY: 552 },
-  { id: 's', finger: '掌部', section: '根部', label: '拇指根部过渡区', points: '200,365 305,365 305,472 200,472', centerX: 252, centerY: 418 },
-  { id: 'r', finger: '掌部', section: '掌心', label: '掌心中央', points: '270,365 440,365 440,625 270,625', centerX: 355, centerY: 495 },
-  { id: 'n', finger: '掌部', section: '无名指下', label: '无名指下方过渡区', points: '380,305 450,305 450,382 380,382', centerX: 415, centerY: 343 },
-  { id: 'q', finger: '掌部', section: '小鱼际', label: '小鱼际肌（小指球肌）', points: '430,400 525,400 525,625 430,625', centerX: 477, centerY: 512 },
-  // 腕部（手腕横纹区，参考手掌下沿）
-  { id: 'w', finger: '掌部', section: '腕部', label: '腕部（桡腕关节）', points: '180,625 480,625 480,700 180,700', centerX: 330, centerY: 662 },
+  { id: 't', finger: '掌部', section: '大鱼际', label: '大鱼际肌（拇指球肌）', points: '115,400 275,400 275,495 115,495', centerX: 195, centerY: 447 },
+  { id: 's', finger: '掌部', section: '根部',  label: '食指根部过渡区',       points: '195,355 280,355 280,405 195,405', centerX: 237, centerY: 380 },
+  { id: 'r', finger: '掌部', section: '掌心',  label: '掌心中央',             points: '280,345 430,345 430,495 280,495', centerX: 355, centerY: 420 },
+  { id: 'n', finger: '掌部', section: '无名指下', label: '无名指下方过渡区',  points: '345,300 425,300 425,350 345,350', centerX: 385, centerY: 325 },
+  { id: 'q', finger: '掌部', section: '小鱼际',  label: '小鱼际肌（小指球肌）', points: '420,395 525,395 525,535 420,535', centerX: 472, centerY: 465 },
+  // 腕部
+  { id: 'w', finger: '掌部', section: '腕部',  label: '腕部（桡腕关节）',     points: '200,615 470,615 470,695 200,695', centerX: 335, centerY: 655 },
 ];
 
 // Borg CR10 评分颜色梯度（0=白/无疲劳 → 10=深红/极度疲劳）
+// 兼容旧 SCORE_COLOR[数字] 查表（docExport.ts 仍在用 0-10 全色表）
 const SCORE_COLOR: Record<number, string> = {
-  0: '#FFFFFF',
+  0: '#222630',
   1: '#C6E0B4',
   2: '#9CC2E6',
   3: '#67AB9F',
@@ -70,8 +74,25 @@ const SCORE_COLOR: Record<number, string> = {
   10: '#E84C3D',
 };
 
+// 手部热力图渲染专用色阶：每 2 分一档（共 5 档），遵循 Borg CR10 临床分级
+// 0-2 无/极轻 → 2-4 轻度 → 4-6 中度 → 6-8 较重 → 8-10 极重
+// 选用色彩在白底/深底/打印均清晰可辨（与 #2C3A4E 深底地图正面对比度高）
+const SCORE_BAND: Array<{ range: [number, number]; fill: string; text: string; label: string }> = [
+  { range: [0,  2], fill: '#5E8FD3', text: '#FFFFFF', label: '极轻 / 无疲劳' },
+  { range: [2,  4], fill: '#7FCFA1', text: '#0F2A18', label: '轻度' },
+  { range: [4,  6], fill: '#F4D86A', text: '#332B00', label: '中度' },
+  { range: [6,  8], fill: '#F08A3C', text: '#FFFFFF', label: '较重' },
+  { range: [8, 11], fill: '#E84C3D', text: '#FFFFFF', label: '极重' }, // 上界开区间到 11 容错
+];
+const getRegionBand = (score: number) =>
+  SCORE_BAND.find((b) => score >= b.range[0] && score < b.range[1]) || SCORE_BAND[SCORE_BAND.length - 1];
+
+// ID 模式兜底：方案节点尚未生成时，默认给 1 个方案起点（保证行为节点始终有 tab）
+const DEFAULT_ID_VARIANT = { id: 'default', label: '默认', prompt: '', previewUrl: undefined as string | undefined, assetId: undefined as string | undefined };
+
 interface BehaviorPanelProps {
   activeProjectId: string;
+  nodeId: string;
   scenarios: any[];
   onTaskStatsChange: (stats: any) => void;
   taskStats: any;
@@ -88,8 +109,9 @@ interface BehaviorPanelProps {
   stopRecording: () => void;
 }
 
-export function BehaviorPanel({ 
+export function BehaviorPanel({
   activeProjectId,
+  nodeId,
   scenarios, 
   onTaskStatsChange,
   taskStats,
@@ -121,6 +143,111 @@ export function BehaviorPanel({
   });
   // 录音分组折叠：key = 账号__会话
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  // === 方案→行为 连线：ID 外观方案模式（替代 SOP 场景分类卡片模式）===
+  const { useDelivery, getOutput } = useDesignStore();
+  const delivery = useDelivery(nodeId);
+  // 只要收到来自 solution 的投递（哪怕是空的 connected 标记）即视为已连线
+  const isConnectedToSolution = !!delivery && delivery.fromType === 'solution';
+  const [overrideSop, setOverrideSop] = useState(false);
+  const idMode = isConnectedToSolution && !overrideSop;
+  // 投递时方案可能还没生成 → 从方案节点实时输出（getOutput）同步，并支持手动刷新
+  const [syncedVariants, setSyncedVariants] = useState<Array<{ id?: string; label: string; prompt?: string; previewUrl?: string; assetId?: string }> | null>(null);
+  useEffect(() => {
+    if (!delivery || delivery.fromType !== 'solution') { setSyncedVariants(null); return; }
+    const out = getOutput(delivery.fromNodeId);
+    if (out && Array.isArray(out.variants) && out.variants.length > 0) setSyncedVariants(out.variants);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [delivery?.token, delivery?.fromNodeId]);
+  const refreshIdVariants = () => {
+    if (!delivery || delivery.fromType !== 'solution') return;
+    const out = getOutput(delivery.fromNodeId);
+    if (out && Array.isArray(out.variants) && out.variants.length > 0) {
+      setSyncedVariants(out.variants);
+    } else {
+      alert('方案节点还没有可用的 ID 方案，请先在方案节点面板用 Tripo3D 生成 1/3/5 个方案，再回来同步。');
+    }
+  };
+  // 方案生成可能发生在连线之后（甚至方案节点已卸载）：轮询方案节点实时输出自动同步，无需手动刷新
+  useEffect(() => {
+    if (!delivery || delivery.fromType !== 'solution') return;
+    const fromNodeId = delivery.fromNodeId;
+    const timer = setInterval(() => {
+      const out = getOutput(fromNodeId);
+      if (out && Array.isArray(out.variants) && out.variants.length > 0) {
+        setSyncedVariants((prev) => {
+          const sig = (arr: any[]) => arr.map((v: any) => `${v.id}|${v.label}|${v.assetId || ''}|${(v.previewUrl || '').slice(0, 80)}`).join('\n');
+          return sig(out.variants) === sig(prev || []) ? prev : out.variants;
+        });
+      }
+    }, 1500);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [delivery?.fromNodeId]);
+  const deliveredVariants: Array<{ id?: string; label: string; prompt?: string; previewUrl?: string; assetId?: string }> | undefined = delivery?.data?.variants;
+  const idVariants = idMode
+    ? (deliveredVariants && deliveredVariants.length > 0 ? deliveredVariants : syncedVariants) ?? null
+    : null;
+  // 实际用于渲染的 variants：无真实方案时兜底 1 个默认方案，保证行为节点始终有 tab
+  const effectiveVariants = useMemo(() => {
+    if (!idMode) return null;
+    return idVariants && idVariants.length > 0 ? idVariants : [DEFAULT_ID_VARIANT];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idMode, idVariants]);
+  // T3（智能UI界面）启用开关：每 variant 独立
+  const [t3Enabled, setT3Enabled] = useState<Record<string, boolean>>({});
+  const toggleT3 = (vid: string) => setT3Enabled((p) => ({ ...p, [vid]: !p[vid] }));
+  // ID 模式合成 taskSequences（结构对齐 sop，便于复用任务卡 / 统计 / 录音管线）
+  const idSequences = useMemo(() => {
+    if (!effectiveVariants) return [];
+    return effectiveVariants.map((v) => {
+      const sid = v.id || `var-${v.label}`;
+      const t3On = !!t3Enabled[sid];
+      const tasks: Task[] = [
+        { code: 'T1', title: '基本握持', description: '评估 ID 方案的握持贴合度与疲劳度（可配合手部热力图）', recordPoints: [] },
+        { code: 'T2', title: '精准操作', description: '评估 ID 方案在精细捏取 / 操作下的可控性与精度', recordPoints: [] },
+      ];
+      if (t3On) tasks.push({ code: 'T3', title: '智能UI界面', description: '（可选）评估配套 UI 界面的可达性与清晰度', recordPoints: [] });
+      return { scenarioId: `variant-${sid}`, scenarioTitle: `ID 方案 ${v.label}`, tasks };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveVariants, t3Enabled]);
+  const effectiveSequences = idMode ? idSequences : taskSequences;
+  // 提前到此处：heatmapNodeId 需要访问 currentSequence，避免 TDZ
+  const currentSequence = effectiveSequences[activeTab];
+  // 手部热力图：ID 模式按方案节点+variant 隔离；SOP 模式按 scenario
+  const heatmapNodeId = idMode
+    ? `behavior-idmode-${delivery!.fromNodeId}-${effectiveVariants?.[activeTab]?.id || effectiveVariants?.[activeTab]?.label || String(activeTab)}`
+    : (currentSequence?.scenarioId ? `behavior-heatmap-${currentSequence.scenarioId}` : 'behavior-heatmap-default');
+  // 模式切换 / variant 数量变化时，钳制 activeTab 到合法范围
+  useEffect(() => {
+    if (activeTab >= effectiveSequences.length && effectiveSequences.length > 0) setActiveTab(0);
+  }, [effectiveSequences.length]);
+  const [archiveSaving, setArchiveSaving] = useState(false);
+  const [archiveSavedAt, setArchiveSavedAt] = useState<string | null>(null);
+  const heatmapLoadedRef = useRef(false);
+  // 已评分列表折叠（默认折叠，避免视觉冗余）
+  const [scoredListOpen, setScoredListOpen] = useState(false);
+
+  // 加载云端存档（仅在 scenarioId 切换时拉一次）
+  useEffect(() => {
+    let cancelled = false;
+    heatmapLoadedRef.current = false;
+    loadPanelState<{ regionScores: Record<string, number>; regionNotes: Record<string, string> }>(
+      activeProjectId, heatmapNodeId, 'behavior',
+    ).then((res) => {
+      if (cancelled) return;
+      if (res?.data?.regionScores && Object.keys(res.data.regionScores).length > 0) {
+        setRegionScores(res.data.regionScores);
+      }
+      if (res?.data?.regionNotes && Object.keys(res.data.regionNotes).length > 0) {
+        setRegionNotes(res.data.regionNotes);
+      }
+      setArchiveSavedAt(res?.updatedAt || null);
+      heatmapLoadedRef.current = true;
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeProjectId, heatmapNodeId]);
 
   // Generate task sequences based on selected scenarios
   useEffect(() => {
@@ -547,8 +674,6 @@ export function BehaviorPanel({
     }));
   }, [taskSequences]);
 
-  const currentSequence = taskSequences[activeTab];
-
   const [isUploading, setIsUploading] = useState(false);
   const [user, setUser] = useState<any>(null);
 
@@ -893,10 +1018,95 @@ export function BehaviorPanel({
     setSelectedRegion(null);
   };
 
-  if (taskSequences.length === 0) {
+  // === 手部热力图：存档 + JSON/CSV 本地导出 ===
+  const handleArchiveHeatmap = async () => {
+    setArchiveSaving(true);
+    try {
+      const ts = await savePanelState(
+        activeProjectId, heatmapNodeId, 'behavior',
+        { regionScores, regionNotes },
+      );
+      setArchiveSavedAt(ts);
+    } catch (e: any) {
+      alert('存档失败：' + (e?.message || e));
+    } finally {
+      setArchiveSaving(false);
+    }
+  };
+
+  // 通用：构造行（手部打分 → 表格）
+  const buildHeatmapRows = () => {
+    const ts = new Date().toISOString();
+    return HAND_REGIONS.map((r) => {
+      const score = regionScores[r.id];
+      const band = score != null ? getRegionBand(score) : null;
+      return {
+        region_id: r.id,
+        finger: r.finger,
+        section: r.section,
+        label: r.label,
+        score: score ?? '',
+        band: band?.label ?? '',
+        band_fill: band?.fill ?? '',
+        note: regionNotes[r.id] ?? '',
+        updated_at: ts,
+      };
+    });
+  };
+
+  const downloadBlob = (filename: string, mime: string, content: string) => {
+    const blob = new Blob([content], { type: mime + ';charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); document.body.removeChild(a); }, 100);
+  };
+
+  const handleExportHeatmapJSON = () => {
+    if (Object.keys(regionScores).length === 0) {
+      alert('暂无评分，先点击手部分区打分吧。'); return;
+    }
+    const rows = buildHeatmapRows();
+    const payload = {
+      scenarioId: currentSequence?.scenarioId,
+      scenarioTitle: currentSequence?.scenarioTitle,
+      archivedAt: archiveSavedAt,
+      exportedAt: new Date().toISOString(),
+      scale: 'Borg CR10, 5 bands per 2 points',
+      scoredCount: Object.keys(regionScores).length,
+      totalRegions: HAND_REGIONS.length,
+      rows,
+    };
+    downloadBlob(
+      `hand-fatigue-${(currentSequence?.scenarioTitle || 'scenario').replace(/[^\w-]/g, '_')}-${new Date().toISOString().slice(0, 10)}.json`,
+      'application/json',
+      JSON.stringify(payload, null, 2),
+    );
+  };
+
+  const handleExportHeatmapCSV = () => {
+    if (Object.keys(regionScores).length === 0) {
+      alert('暂无评分，先点击手部分区打分吧。'); return;
+    }
+    const rows = buildHeatmapRows();
+    const header = ['region_id', 'finger', 'section', 'label', 'score', 'band', 'band_fill', 'note', 'updated_at'];
+    const esc = (s: any) => {
+      const v = s == null ? '' : String(s);
+      return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+    };
+    const csv = '\ufeff' + [header.join(','), ...rows.map((r) => header.map((h) => esc((r as any)[h]).replace(/\n/g, '\\n')).join(','))].join('\n');
+    downloadBlob(
+      `hand-fatigue-${(currentSequence?.scenarioTitle || 'scenario').replace(/[^\w-]/g, '_')}-${new Date().toISOString().slice(0, 10)}.csv`,
+      'text/csv',
+      csv,
+    );
+  };
+
+  // ID 模式下即使无场景也可渲染（空态由下方处理）；非 ID 模式且无场景时给引导
+  if (!idMode && taskSequences.length === 0) {
     return (
       <div className="p-6">
-        <div className="text-center py-12 text-gray-500">
+        <div className="text-center py-12 text-muted-foreground">
           <p>请先在情境扩展节点中选择场景</p>
         </div>
       </div>
@@ -905,20 +1115,63 @@ export function BehaviorPanel({
 
   return (
     <div className="flex flex-col h-full">
+      {/* ID 方案模式徽标 + 切回 SOP（仅当存在方案→行为投递时显示） */}
+      {isConnectedToSolution && delivery && (
+        <div className="px-4 py-2 bg-node-solution/5 border-b border-node-solution/20 flex items-center justify-between text-xs">
+          <div className="flex items-center gap-2 text-node-solution">
+            <Sparkles className="w-3.5 h-3.5" />
+            <span className="font-medium">ID 外观方案模式</span>
+            <span className="text-muted-foreground">· 来自方案节点 {delivery.fromNodeId}</span>
+            <span className="text-muted-foreground">
+              · {idVariants?.length ?? 0} 个方案{idMode && (!idVariants || idVariants.length === 0) ? '（默认起点）' : ''}
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            {idMode && (
+              <button onClick={refreshIdVariants} className="flex items-center gap-1 text-node-solution hover:underline">
+                <RefreshCw className="w-3 h-3" /> 刷新方案
+              </button>
+            )}
+            {idMode ? (
+              <button onClick={() => setOverrideSop(true)} className="text-muted-foreground hover:text-foreground underline">
+                查看 SOP 场景模式
+              </button>
+            ) : (
+              <button onClick={() => setOverrideSop(false)} className="text-node-solution hover:underline">
+                ← 回到 ID 方案模式
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ID 模式默认方案提示：方案节点尚未生成时，当前为默认起点 */}
+      {idMode && (!idVariants || idVariants.length === 0) && (
+        <div className="flex items-start gap-2 px-4 py-2.5 bg-node-solution/10 border-b border-node-solution/20 text-xs text-foreground">
+          <Sparkles className="w-3.5 h-3.5 text-node-solution flex-shrink-0 mt-0.5" />
+          <span>
+            当前为<strong>默认方案起点</strong>（tab「ID 方案 默认」）。在「方案节点」用 Tripo3D 生成 3D 方案后，点顶部「刷新方案」替换为真实方案。
+          </span>
+        </div>
+      )}
+
       {/* Tabs */}
-      <div className="border-b border-gray-200 bg-gray-50">
+      <div className="border-b border-border bg-muted">
         <div className="flex overflow-x-auto">
-          {taskSequences.map((seq, index) => (
+          {effectiveSequences.map((seq, index) => (
             <button
               key={seq.scenarioId}
               onClick={() => setActiveTab(index)}
               className={`px-4 py-3 text-sm whitespace-nowrap border-b-2 transition-colors ${
                 activeTab === index
-                  ? 'border-[#007AFF] text-[#007AFF] bg-white'
-                  : 'border-transparent text-gray-600 hover:text-gray-900'
+                  ? 'border-node-behavior text-node-behavior bg-card'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
               }`}
             >
               {seq.scenarioTitle}
+              {idMode && effectiveVariants && effectiveVariants[index]?.previewUrl && (
+                <span className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full bg-node-context align-middle" title="该方案已生成 3D" />
+              )}
             </button>
           ))}
         </div>
@@ -927,7 +1180,7 @@ export function BehaviorPanel({
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
         {/* Mobile Test Interface Header */}
-        <div className="flex items-center justify-between text-sm text-gray-600">
+        <div className="flex items-center justify-between text-sm text-muted-foreground">
           <div className="flex items-center gap-2">
             <Smartphone className="w-4 h-4" />
             <span>现场测试指南 - {currentSequence?.scenarioTitle}</span>
@@ -941,8 +1194,8 @@ export function BehaviorPanel({
               }}
               className={`ml-3 flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded transition-all ${
                 isRecording && recordingTask === currentSequence?.scenarioId
-                  ? 'bg-red-100 text-red-700 animate-pulse border border-red-200 shadow-sm'
-                  : 'bg-[#007AFF]/10 text-[#007AFF] hover:bg-[#007AFF]/20'
+                  ? 'bg-destructive/10 text-destructive animate-pulse border border-destructive/30 shadow-sm'
+                  : 'bg-node-behavior/10 text-node-behavior hover:bg-node-behavior/20'
               }`}
               title="用于实验过程中收集放声思考法(Think-aloud)录音数据"
             >
@@ -955,29 +1208,29 @@ export function BehaviorPanel({
           </div>
           <div className="flex gap-2">
              {!user && (
-              <span className="flex items-center gap-1 text-[11px] text-amber-600 mr-1 px-2 py-1.5">
+              <span className="flex items-center gap-1 text-[11px] text-node-solution mr-1 px-2 py-1.5">
                 <AlertTriangle className="w-3 h-3" /> 未登录
               </span>
              )}
              <button
               onClick={handleCloudSubmit}
               disabled={isUploading || !user}
-              className="flex items-center gap-1 px-3 py-1.5 text-xs bg-green-50 text-green-700 border border-green-200 rounded hover:bg-green-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+              className="flex items-center gap-1 px-3 py-1.5 text-xs bg-node-context/10 text-node-context border border-node-context/20 rounded hover:bg-node-context/10 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
               title={user ? "并发安全上传" : "请先登录"}
             >
               {isUploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <CloudUpload className="w-3 h-3" />}
               云端同步
               {cloudCount !== null && (
-                <span className="ml-1 bg-green-200 text-green-800 text-[10px] px-1.5 rounded-full font-medium">
+                <span className="ml-1 bg-node-context/10 text-node-context text-[10px] px-1.5 rounded-full font-medium">
                   {cloudCount}
                 </span>
               )}
             </button>
-            <div className="h-6 w-px bg-gray-300 mx-1"></div>
+            <div className="h-6 w-px bg-border mx-1"></div>
             <button
               onClick={handleExportVocalReport}
               disabled={recordings.length === 0}
-              className="flex items-center gap-1 px-3 py-1.5 text-xs bg-white text-gray-700 border border-gray-200 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-1 px-3 py-1.5 text-xs bg-card text-foreground border border-border rounded hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed"
               title={recordings.length ? "按账号分组导出出声报告(Word)" : "暂无录音"}
             >
               <FileText className="w-3 h-3" />
@@ -985,7 +1238,7 @@ export function BehaviorPanel({
             </button>
             <button
               onClick={handleExportFullReport}
-              className="flex items-center gap-1 px-3 py-1.5 text-xs bg-blue-50 text-blue-700 border border-blue-200 rounded hover:bg-blue-100"
+              className="flex items-center gap-1 px-3 py-1.5 text-xs bg-node-behavior/10 text-node-behavior border border-node-behavior/20 rounded hover:bg-node-behavior/10"
               title="汇总导出整体测试记录报告(Word)"
             >
               <FileText className="w-3 h-3" />
@@ -1008,16 +1261,16 @@ export function BehaviorPanel({
                 const label = first.account && first.account !== '未登录' ? first.account : '未登录用户';
                 const sessionTime = new Date(first.at).toLocaleString();
                 return (
-                  <div key={key} className="border border-gray-200 rounded-lg bg-gray-50 overflow-hidden">
-                    <div className="flex items-center justify-between px-3 py-2 bg-gray-100">
+                  <div key={key} className="border border-border rounded-lg bg-muted overflow-hidden">
+                    <div className="flex items-center justify-between px-3 py-2 bg-muted">
                       <button
                         onClick={() => setCollapsedGroups((p) => ({ ...p, [key]: !collapsed }))}
-                        className="flex items-center gap-1 text-xs font-medium text-gray-700 min-w-0"
+                        className="flex items-center gap-1 text-xs font-medium text-foreground min-w-0"
                       >
                         <span className="shrink-0">{collapsed ? '▶' : '▼'}</span>
                         <span className="truncate">{label}</span>
-                        <span className="text-[11px] text-gray-500 shrink-0">· {sessionTime}</span>
-                        <span className="ml-1 text-[11px] text-gray-500 shrink-0">（{recs.length} 段）</span>
+                        <span className="text-[11px] text-muted-foreground shrink-0">· {sessionTime}</span>
+                        <span className="ml-1 text-[11px] text-muted-foreground shrink-0">（{recs.length} 段）</span>
                       </button>
                       <button
                         onClick={() => {
@@ -1025,48 +1278,48 @@ export function BehaviorPanel({
                             setRecordings((prev) => prev.filter((r) => groupKey(r) !== key));
                           }
                         }}
-                        className="text-[11px] text-red-500 hover:underline shrink-0 ml-2"
+                        className="text-[11px] text-destructive hover:underline shrink-0 ml-2"
                       >清空本组</button>
                     </div>
                     {!collapsed && (
                       <div className="p-2 space-y-2">
                         {recs.map((rec, i) => (
-                          <div key={rec.id} className="border border-gray-200 rounded p-2 bg-white">
+                          <div key={rec.id} className="border border-border rounded p-2 bg-card">
                             <div className="flex items-center justify-between mb-1 gap-2">
-                              <span className="text-[11px] text-gray-600">
+                              <span className="text-[11px] text-muted-foreground">
                                 #{i + 1}
                                 {rec.uploading
-                                  ? <span className="ml-2 text-blue-600">上传中…</span>
+                                  ? <span className="ml-2 text-node-behavior">上传中…</span>
                                   : rec.localOnly
-                                  ? <span className="ml-2 text-amber-600">仅本地</span>
-                                  : <span className="ml-2 text-green-600">已存云端</span>}
+                                  ? <span className="ml-2 text-node-solution">仅本地</span>
+                                  : <span className="ml-2 text-node-context">已存云端</span>}
                               </span>
                               <div className="flex items-center gap-2 shrink-0">
-                                <span className="text-[11px] text-gray-400">{new Date(rec.at).toLocaleTimeString()}</span>
+                                <span className="text-[11px] text-muted-foreground">{new Date(rec.at).toLocaleTimeString()}</span>
                                 <button
                                   onClick={() => setRecordings((prev) => prev.filter((r) => r.id !== rec.id))}
-                                  className="text-[11px] text-red-500 hover:underline"
+                                  className="text-[11px] text-destructive hover:underline"
                                 >删除</button>
                               </div>
                             </div>
                             <audio controls src={rec.url} className="w-full" key={rec.id} />
                             <div className="mt-1 flex items-center gap-2">
                               <a href={rec.url} target="_blank" rel="noreferrer"
-                                className="text-[11px] text-[#007AFF] break-all truncate flex-1">{rec.url}</a>
+                                className="text-[11px] text-node-behavior break-all truncate flex-1">{rec.url}</a>
                               <button onClick={() => navigator.clipboard?.writeText(rec.url)}
-                                className="text-[11px] text-gray-500 hover:text-gray-700 underline shrink-0">复制</button>
+                                className="text-[11px] text-muted-foreground hover:text-foreground underline shrink-0">复制</button>
                             </div>
                             {rec.transcribing && (
-                              <div className="mt-1 text-[11px] text-blue-600 flex items-center gap-1">
-                                <span className="inline-block w-2 h-2 rounded-full bg-blue-500 animate-pulse" />豆包 ASR 转写中…</div>
+                              <div className="mt-1 text-[11px] text-node-behavior flex items-center gap-1">
+                                <span className="inline-block w-2 h-2 rounded-full bg-node-behavior/100 animate-pulse" />豆包 ASR 转写中…</div>
                             )}
                             {rec.transcript && (
-                              <div className="mt-1 p-2 bg-gray-50 border border-gray-200 rounded text-[12px] text-gray-800 leading-relaxed">
-                                <span className="text-[11px] text-gray-400">转写：</span>{rec.transcript}</div>
+                              <div className="mt-1 p-2 bg-muted border border-border rounded text-[12px] text-foreground leading-relaxed">
+                                <span className="text-[11px] text-muted-foreground">转写：</span>{rec.transcript}</div>
                             )}
                             {rec.transcriptError && (
                               <div className="mt-1 flex items-center gap-2">
-                                <span className="text-[11px] text-red-500">转写失败：{rec.transcriptError}</span>
+                                <span className="text-[11px] text-destructive">转写失败：{rec.transcriptError}</span>
                                 <button onClick={async () => {
                                   setRecordings((prev) => prev.map((r) => (r.id === rec.id ? { ...r, transcribing: true, transcriptError: undefined } : r)));
                                   try {
@@ -1075,7 +1328,7 @@ export function BehaviorPanel({
                                   } catch (e: any) {
                                     setRecordings((prev) => prev.map((r) => (r.id === rec.id ? { ...r, transcribing: false, transcriptError: e.message } : r)));
                                   }
-                                }} className="text-[11px] text-[#007AFF] hover:underline">重试</button>
+                                }} className="text-[11px] text-node-behavior hover:underline">重试</button>
                               </div>
                             )}
                           </div>
@@ -1092,7 +1345,7 @@ export function BehaviorPanel({
         <div className="flex items-center justify-end gap-2 mb-2">
              <button
               onClick={() => setShowAddForm(true)}
-              className="flex items-center gap-1 px-3 py-1.5 text-xs bg-white text-gray-700 border border-gray-200 rounded hover:bg-gray-50"
+              className="flex items-center gap-1 px-3 py-1.5 text-xs bg-card text-foreground border border-border rounded hover:bg-accent"
             >
               <Plus className="w-3 h-3" />
               自定义任务
@@ -1100,7 +1353,7 @@ export function BehaviorPanel({
              <button
               onClick={handleAIExpand}
               disabled={isGenerating || !user}
-              className="flex items-center gap-1 px-3 py-1.5 text-xs bg-purple-50 text-purple-700 border border-purple-200 rounded hover:bg-purple-100 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-1 px-3 py-1.5 text-xs bg-node-value/10 text-node-value border border-node-value/20 rounded hover:bg-node-value/10 disabled:opacity-50 disabled:cursor-not-allowed"
               title={user ? "调用AI生成高危测试任务" : "请先登录"}
             >
               <Sparkles className="w-3 h-3" />
@@ -1110,32 +1363,32 @@ export function BehaviorPanel({
 
         {/* Add Task Form */}
         {showAddForm && (
-          <div className="border border-[#007AFF] bg-blue-50/50 rounded-lg p-3 mb-3 animate-in fade-in slide-in-from-top-2">
+          <div className="border border-node-behavior bg-node-behavior/10 rounded-lg p-3 mb-3 animate-in fade-in slide-in-from-top-2">
             <input
               type="text"
               value={newTask.title}
               onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
               placeholder="输入任务标题..."
-              className="w-full text-sm px-3 py-2 border border-blue-200 rounded mb-2 focus:outline-none focus:border-[#007AFF]"
+              className="w-full text-sm px-3 py-2 border border-node-behavior/20 rounded mb-2 focus:outline-none focus:border-node-behavior"
               autoFocus
             />
             <textarea
                value={newTask.description}
                onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
                placeholder="任务描述..."
-               className="w-full text-xs px-3 py-2 border border-blue-200 rounded mb-2 focus:outline-none focus:border-[#007AFF] min-h-[60px]"
+               className="w-full text-xs px-3 py-2 border border-node-behavior/20 rounded mb-2 focus:outline-none focus:border-node-behavior min-h-[60px]"
             />
             <div className="flex justify-end gap-2">
               <button
                 onClick={() => setShowAddForm(false)}
-                className="px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-200 rounded"
+                className="px-3 py-1.5 text-xs text-muted-foreground hover:bg-secondary rounded"
               >
                 取消
               </button>
               <button
                 onClick={handleAddTask}
                 disabled={!newTask.title}
-                className="px-3 py-1.5 text-xs bg-[#007AFF] text-white rounded hover:bg-[#0051D5] disabled:opacity-50"
+                className="px-3 py-1.5 text-xs bg-node-behavior text-white rounded hover:bg-node-behavior/80 disabled:opacity-50"
               >
                 添加任务
               </button>
@@ -1143,37 +1396,62 @@ export function BehaviorPanel({
           </div>
         )}
 
+        {/* T3 智能UI界面 启用开关（ID 模式，每 variant 独立） */}
+        {idMode && effectiveVariants && (() => {
+          const cur = effectiveVariants[activeTab];
+          const sid = cur?.id || `var-${cur?.label}`;
+          const on = !!t3Enabled[sid];
+          return (
+            <div className="flex items-center justify-between px-3 py-2 bg-node-solution/5 border border-node-solution/20 rounded-lg text-xs">
+              <label className="flex items-center gap-2 cursor-pointer text-foreground">
+                <input
+                  type="checkbox"
+                  className="w-3.5 h-3.5 accent-node-solution"
+                  checked={on}
+                  onChange={() => toggleT3(sid)}
+                />
+                <Sparkles className="w-3.5 h-3.5 text-node-solution" />
+                <span>本方案启用 T3 智能UI界面测试</span>
+                <span className="text-muted-foreground">（可选）</span>
+              </label>
+              <span className="text-muted-foreground">
+                {on ? 'T3 已加入任务流' : '仅 T1 基本握持 + T2 精准操作'}
+              </span>
+            </div>
+          );
+        })()}
+
         {/* Task List */}
         <div className="space-y-3">
-          <h3 className="text-sm text-gray-700">测试任务流</h3>
+          <h3 className="text-sm text-foreground">测试任务流</h3>
           {currentSequence?.tasks.map((task) => (
             <div
               key={task.id}
               className={`border rounded-lg p-4 ${
                 task.status === 'active' 
-                  ? 'border-[#007AFF] bg-blue-50' 
+                  ? 'border-node-behavior bg-node-behavior/10' 
                   : task.status === 'completed'
-                  ? 'border-green-200 bg-green-50'
-                  : 'border-gray-200 bg-white'
+                  ? 'border-node-context/20 bg-node-context/10'
+                  : 'border-border bg-card'
               }`}
             >
               <div className="flex items-start gap-3 mb-3">
                 {/* Task Code Badge */}
                 <div className={`w-10 h-10 rounded flex items-center justify-center text-xs text-white flex-shrink-0 ${
-                  task.status === 'active' ? 'bg-[#007AFF]' :
-                  task.status === 'completed' ? 'bg-green-500' :
-                  'bg-gray-400'
+                  task.status === 'active' ? 'bg-node-behavior' :
+                  task.status === 'completed' ? 'bg-node-context' :
+                  'bg-secondary'
                 }`}>
                   {task.code}
                 </div>
 
                 {/* Task Illustration */}
-                <div className="w-16 h-16 flex-shrink-0 border border-gray-200 rounded bg-white">
+                <div className="w-16 h-16 flex-shrink-0 border border-border rounded bg-card">
                   <svg viewBox="0 0 80 80" className="w-full h-full p-2">
                     <path
                       d={task.illustration}
                       fill="none"
-                      stroke={task.status === 'completed' ? '#34C759' : '#007AFF'}
+                      stroke={task.status === 'completed' ? '#4ADE80' : '#60A5FA'}
                       strokeWidth="2"
                       strokeLinecap="round"
                       strokeLinejoin="round"
@@ -1184,12 +1462,12 @@ export function BehaviorPanel({
                 {/* Task Info */}
                 <div className="flex-1">
                   <div className="flex items-start justify-between mb-1">
-                    <h4 className="text-sm text-gray-900">{task.title}</h4>
+                    <h4 className="text-sm text-foreground">{task.title}</h4>
                     <div className="flex items-center gap-2">
                       <div className={`text-[10px] px-2 py-0.5 rounded uppercase tracking-wide ${
-                        task.status === 'active' ? 'bg-blue-100 text-[#007AFF]' :
-                        task.status === 'completed' ? 'bg-green-100 text-green-700' :
-                        'bg-gray-100 text-gray-600'
+                        task.status === 'active' ? 'bg-node-behavior/10 text-node-behavior' :
+                        task.status === 'completed' ? 'bg-node-context/10 text-node-context' :
+                        'bg-muted text-muted-foreground'
                       }`}>
                         {task.status === 'active' ? 'Active' : task.status === 'completed' ? 'Done' : 'Pending'}
                       </div>
@@ -1197,15 +1475,15 @@ export function BehaviorPanel({
                   </div>
                   {task.description && task.description.includes('•') ? (
                     <details className="mt-2 group">
-                      <summary className="text-[10px] font-medium text-[#007AFF] cursor-pointer outline-none select-none hover:underline">
+                      <summary className="text-[10px] font-medium text-node-behavior cursor-pointer outline-none select-none hover:underline">
                         展开/折叠详细操作步骤
                       </summary>
-                      <div className="text-[10px] text-gray-600 whitespace-pre-line mt-1.5 bg-gray-50 p-2.5 rounded border border-gray-100 leading-relaxed">
+                      <div className="text-[10px] text-muted-foreground whitespace-pre-line mt-1.5 bg-muted p-2.5 rounded border border-border leading-relaxed">
                         {task.description}
                       </div>
                     </details>
                   ) : (
-                    <div className="text-[10px] text-gray-600 whitespace-pre-line mt-2 bg-gray-50 p-2 rounded border border-gray-100">
+                    <div className="text-[10px] text-muted-foreground whitespace-pre-line mt-2 bg-muted p-2 rounded border border-border">
                       {task.description}
                     </div>
                   )}
@@ -1213,13 +1491,13 @@ export function BehaviorPanel({
               </div>
 
               {/* Record Points */}
-              <div className="pt-3 border-t border-gray-200">
-                <div className="text-xs text-gray-600 mb-2">记录点 (填写完成后自动标记为Done):</div>
+              <div className="pt-3 border-t border-border">
+                <div className="text-xs text-muted-foreground mb-2">记录点 (填写完成后自动标记为Done):</div>
                 <div className="space-y-2">
                   {task.recordPoints.map((point) => (
                     <div key={point.id} className="flex items-center gap-2">
-                      <Circle className="w-2 h-2 text-gray-400 flex-shrink-0" />
-                      <span className="text-xs text-gray-700 min-w-[100px]">{point.label}</span>
+                      <Circle className="w-2 h-2 text-muted-foreground flex-shrink-0" />
+                      <span className="text-xs text-foreground min-w-[100px]">{point.label}</span>
                       {editingRecordPoint === point.id ? (
                         <div className="flex-1">
                           <div className="flex items-center gap-1">
@@ -1228,7 +1506,7 @@ export function BehaviorPanel({
                                 type="text"
                                 value={point.value}
                                 onChange={(e) => handleUpdateRecordPoint(task.id, point.id, e.target.value)}
-                                className={`w-full px-2 py-1 text-xs border rounded focus:outline-none focus:ring-1 focus:ring-[#007AFF] ${
+                                className={`w-full px-2 py-1 text-xs border rounded focus:outline-none focus:ring-1 focus:ring-node-behavior ${
                                   point.unit ? 'pr-8' : ''
                                 }`}
                                 placeholder={point.range ? `范围 ${point.range}` : '请输入...'}
@@ -1244,41 +1522,41 @@ export function BehaviorPanel({
                                 }}
                               />
                               {point.unit && (
-                                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">
+                                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">
                                   {point.unit}
                                 </span>
                               )}
                             </div>
                             <button
                               onClick={() => setEditingRecordPoint(null)}
-                              className="p-1 hover:bg-gray-200 rounded flex-shrink-0"
+                              className="p-1 hover:bg-secondary rounded flex-shrink-0"
                             >
-                              <Save className="w-3 h-3 text-green-600" />
+                              <Save className="w-3 h-3 text-node-context" />
                             </button>
                           </div>
                           
                           {/* Guidance Panel */}
                           {(point.guidance || point.range || point.risk) && (
-                            <div className="mt-2 p-2 bg-blue-50/50 border border-blue-100 rounded text-[10px] space-y-1 animate-in fade-in slide-in-from-top-1 duration-200">
+                            <div className="mt-2 p-2 bg-node-behavior/10 border border-blue-100 rounded text-[10px] space-y-1 animate-in fade-in slide-in-from-top-1 duration-200">
                               <div className="flex gap-4">
                                 {point.range && (
-                                  <span className="text-gray-500">
-                                    范围: <span className="font-medium text-gray-700">{point.range} {point.unit}</span>
+                                  <span className="text-muted-foreground">
+                                    范围: <span className="font-medium text-foreground">{point.range} {point.unit}</span>
                                   </span>
                                 )}
                                 {point.recommended && (
-                                  <span className="text-blue-600 font-medium">
+                                  <span className="text-node-behavior font-medium">
                                     推荐: {point.recommended} {point.unit}
                                   </span>
                                 )}
                               </div>
                               {point.guidance && (
-                                <div className="text-gray-600 leading-tight">
+                                <div className="text-muted-foreground leading-tight">
                                   💡 {point.guidance}
                                 </div>
                               )}
                               {point.risk && (
-                                <div className="text-orange-600 leading-tight flex items-start gap-1">
+                                <div className="text-node-solution leading-tight flex items-start gap-1">
                                   <span>⚠️</span>
                                   <span>{point.risk}</span>
                                 </div>
@@ -1288,13 +1566,13 @@ export function BehaviorPanel({
                         </div>
                       ) : (
                         <div 
-                          className="flex items-center gap-2 flex-1 cursor-pointer hover:bg-gray-50 px-2 py-1 rounded group transition-colors"
+                          className="flex items-center gap-2 flex-1 cursor-pointer hover:bg-accent px-2 py-1 rounded group transition-colors"
                           onClick={() => setEditingRecordPoint(point.id)}
                         >
-                          <span className={`text-xs flex-1 ${point.value ? 'text-gray-900' : 'text-gray-400 italic'}`}>
+                          <span className={`text-xs flex-1 ${point.value ? 'text-foreground' : 'text-muted-foreground italic'}`}>
                             {point.value ? (
                               <span>
-                                {point.value} <span className="text-gray-500 text-[10px]">{point.unit}</span>
+                                {point.value} <span className="text-muted-foreground text-[10px]">{point.unit}</span>
                               </span>
                             ) : (
                               '点击填写...'
@@ -1308,37 +1586,37 @@ export function BehaviorPanel({
               </div>
 
               {/* Branch Cards (意外分支 SOP 可事后添加补充记录) */}
-              <div className="pt-3 border-t border-gray-200 mt-3">
+              <div className="pt-3 border-t border-border mt-3">
                 <div className="flex items-center gap-1.5 mb-2">
-                  <AlertTriangle className="w-3.5 h-3.5 text-orange-500" />
-                  <span className="text-xs text-gray-700 font-medium">异常分支 SOP 卡片</span>
+                  <AlertTriangle className="w-3.5 h-3.5 text-node-solution" />
+                  <span className="text-xs text-foreground font-medium">异常分支 SOP 卡片</span>
                 </div>
                 {task.branchCards && task.branchCards.length > 0 ? (
                   <div className="space-y-2">
                     {task.branchCards.map((card) => (
-                      <div key={card.id} className="border border-orange-200 bg-orange-50/40 rounded p-2.5 group">
+                      <div key={card.id} className="border border-node-solution/20 bg-node-solution/10 rounded p-2.5 group">
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex-1 text-[11px]">
-                            <div className="text-orange-700 font-medium">触发：{card.trigger}</div>
-                            <div className="text-gray-600 mt-0.5">处理：{card.action}</div>
+                            <div className="text-node-solution font-medium">触发：{card.trigger}</div>
+                            <div className="text-muted-foreground mt-0.5">处理：{card.action}</div>
                           </div>
                           <button
                             onClick={() => handleDeleteBranchCard(task.id, card.id)}
-                            className="p-1 hover:bg-orange-100 rounded flex-shrink-0"
+                            className="p-1 hover:bg-node-solution/10 rounded flex-shrink-0"
                             title="删除该分支卡片"
                           >
-                            <Trash2 className="w-3 h-3 text-orange-400" />
+                            <Trash2 className="w-3 h-3 text-node-solution" />
                           </button>
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="text-[10px] text-gray-400 mb-2">暂无异常分支卡片</div>
+                  <div className="text-[10px] text-muted-foreground mb-2">暂无异常分支卡片</div>
                 )}
                 <button
                   onClick={() => handleAddBranchCard(task.id)}
-                  className="mt-2 flex items-center gap-1 px-2.5 py-1.5 text-[11px] bg-orange-50 text-orange-600 border border-orange-200 rounded hover:bg-orange-100 w-full justify-center"
+                  className="mt-2 flex items-center gap-1 px-2.5 py-1.5 text-[11px] bg-node-solution/10 text-node-solution border border-node-solution/20 rounded hover:bg-node-solution/10 w-full justify-center"
                 >
                   <Plus className="w-3 h-3" />
                   添加意外分支 SOP 卡片
@@ -1348,15 +1626,68 @@ export function BehaviorPanel({
           ))}
         </div>
 
-        {/* Hand Anatomy Heatmap — 23 个解剖分区 0-10 疲劳打分 */}
-        <div className="border border-gray-200 rounded-lg p-4 bg-white">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm text-gray-700">手部解剖热力图 · 疲劳评分</h3>
-            <span className="text-[10px] text-gray-500">Borg CR10</span>
+        {/* Hand Anatomy Heatmap — 23 个解剖分区，Borg CR10（每 2 分一档共 5 档）轮廓内直涂 */}
+        <div className="border border-border rounded-lg p-4 bg-background">
+          <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+            <div className="flex items-center gap-2 min-w-0">
+              <h3 className="text-sm text-foreground whitespace-nowrap">手部解剖热力图 · 疲劳评分</h3>
+              <span className="text-[10px] text-muted-foreground">
+                {Object.keys(regionScores).length} / {HAND_REGIONS.length} 已评
+              </span>
+            </div>
+            <div className="flex items-center gap-1 text-[10px]">
+              <span className="text-muted-foreground hidden sm:inline-flex items-center gap-1" title={archiveSavedAt ? `云端存档：${new Date(archiveSavedAt).toLocaleString('zh-CN', { hour12: false })}` : '云端尚未存档'}>
+                <Cloud className="w-3 h-3" />
+                {archiveSavedAt
+                  ? new Date(archiveSavedAt).toLocaleString('zh-CN', { hour12: false, month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).slice(2)
+                  : '未存档'}
+              </span>
+              <button
+                onClick={handleArchiveHeatmap}
+                disabled={archiveSaving || Object.keys(regionScores).length === 0}
+                className="flex items-center gap-1 px-2 py-1 rounded bg-node-behavior text-white hover:opacity-90 disabled:opacity-40 transition-all"
+                title="把当前 23 区评分同步到云端（panel_archive 表），刷新页面不丢"
+              >
+                {archiveSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                存档
+              </button>
+              <button
+                onClick={handleExportHeatmapJSON}
+                disabled={Object.keys(regionScores).length === 0}
+                className="flex items-center gap-1 px-2 py-1 rounded border border-border text-foreground hover:bg-accent disabled:opacity-40 transition-all"
+                title="导出 JSON（含全部元数据，研究分析用）"
+              >
+                <FileJson className="w-3 h-3" />JSON
+              </button>
+              <button
+                onClick={handleExportHeatmapCSV}
+                disabled={Object.keys(regionScores).length === 0}
+                className="flex items-center gap-1 px-2 py-1 rounded border border-border text-foreground hover:bg-accent disabled:opacity-40 transition-all"
+                title="导出 CSV（直接进 Excel / SPSS）"
+              >
+                <FileSpreadsheet className="w-3 h-3" />CSV
+              </button>
+            </div>
           </div>
-          <p className="text-xs text-gray-600 mb-3">
-            点击任意解剖分区（a-v 共 23 区，指关节/掌部/大鱼际/小鱼际），按 0(无疲劳) — 10(极度疲劳) 评分。
+          <p className="text-xs text-muted-foreground mb-2">
+            点击任意解剖分区（a-v 共 23 区，指关节 / 掌部 / 大鱼际 / 小鱼际），按 0(无疲劳) — 10(极度疲劳) 评分。
+            <span className="text-foreground/80">色阶：每 2 分一档，共 5 档（极轻 / 轻度 / 中度 / 较重 / 极重），直接在对应区域的轮廓内部直涂。</span>
           </p>
+
+          {/* 5 档色阶图例（深底+彩徽，保证可读性） */}
+          <div className="flex flex-wrap items-center gap-1 mb-3 text-[10px]">
+            {SCORE_BAND.map((b) => (
+              <span
+                key={b.label}
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-900 text-white font-medium"
+                title={`${b.range[0]}–${b.range[1] === 11 ? 10 : b.range[1] - 1} 分 · ${b.label}`}
+              >
+                <span className="inline-block w-2.5 h-2.5 rounded-sm shadow" style={{ backgroundColor: b.fill }} />
+                {b.range[0]}–{b.range[1] === 11 ? 10 : b.range[1] - 1}
+                <span className="opacity-70 font-normal">{b.label}</span>
+              </span>
+            ))}
+          </div>
 
           <div className="relative w-full max-w-[280px] mx-auto aspect-[582/720]">
             <img
@@ -1372,17 +1703,31 @@ export function BehaviorPanel({
             >
               {HAND_REGIONS.map((region) => {
                 const score = regionScores[region.id];
-                const fill = score != null ? SCORE_COLOR[score] : 'transparent';
+                const band = score != null ? getRegionBand(score) : null;
+                const fill = band?.fill ?? 'transparent';
+                const text = band?.text ?? '#F5F5F7';
                 const isSelected = selectedRegion === region.id;
                 return (
                   <g key={region.id}>
+                    {/* 选中区域：双层描边（外光晕 + 内实线） */}
+                    {isSelected && (
+                      <polygon
+                        points={region.points}
+                        fill="none"
+                        stroke="#FB923C"
+                        strokeOpacity={0.45}
+                        strokeWidth={8}
+                        className="pointer-events-none"
+                      />
+                    )}
                     <polygon
                       points={region.points}
                       fill={fill}
-                      fillOpacity={score != null ? 0.55 : 0}
-                      stroke={isSelected ? '#FF9500' : 'transparent'}
-                      strokeWidth={isSelected ? 2 : 0}
-                      className="cursor-pointer transition-colors"
+                      fillOpacity={score != null ? 0.85 : 0}
+                      stroke={isSelected ? '#FB923C' : 'transparent'}
+                      strokeWidth={isSelected ? 2.5 : 0}
+                      className="cursor-pointer transition-all hover:fill-opacity-90"
+                      style={{ filter: isSelected ? 'drop-shadow(0 0 4px rgba(251,146,60,0.6))' : undefined }}
                       onClick={(e) => {
                         e.stopPropagation();
                         setSelectedRegion(region.id);
@@ -1395,9 +1740,13 @@ export function BehaviorPanel({
                         textAnchor="middle"
                         dominantBaseline="middle"
                         className="pointer-events-none select-none"
-                        fontSize="14"
-                        fontWeight="700"
-                        fill="#1A1A1A"
+                        fontSize="13"
+                        fontWeight="800"
+                        fill="#FFFFFF"
+                        stroke="#0F172A"
+                        strokeOpacity={0.9}
+                        strokeWidth={2.5}
+                        paintOrder="stroke"
                       >
                         {score}
                       </text>
@@ -1406,94 +1755,161 @@ export function BehaviorPanel({
                 );
               })}
             </svg>
+
+            {/* 浮动评分框：精准锚定到选中 polygon，自适应上下左右 */}
+            {selectedRegion && (() => {
+              const reg = HAND_REGIONS.find((r) => r.id === selectedRegion);
+              if (!reg) return null;
+              const score = regionScores[reg.id];
+              const band = score != null ? getRegionBand(score) : null;
+              // 横向：右半区往左弹，左半区往右弹；纵向：上半区往下弹，下半区往上弹
+              const isRight = reg.centerX > 582 / 2;
+              const isTop = reg.centerY < 720 / 3;
+              const leftPct = (reg.centerX / 582) * 100;
+              const topPct = (reg.centerY / 720) * 100;
+              const dx = isRight ? 'calc(-100% - 10px)' : '10px';
+              const dy = isTop ? '8px' : 'calc(-100% - 10px)';
+              return (
+                <div
+                  className="absolute z-20 w-[230px] rounded-lg shadow-2xl border-2 bg-white"
+                  style={{
+                    left: `${leftPct}%`,
+                    top: `${topPct}%`,
+                    transform: `translate(${dx}, ${dy})`,
+                    borderColor: band?.fill ?? '#FB923C',
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div
+                    className="px-3 py-2 rounded-t-md flex items-center justify-between"
+                    style={{
+                      backgroundColor: band?.fill ?? '#0F172A',
+                      color: '#FFFFFF',
+                    }}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="inline-flex items-center justify-center w-6 h-6 rounded bg-white/25 text-current text-xs font-black shrink-0">
+                        {reg.id}
+                      </span>
+                      <span className="text-sm font-bold truncate" title={reg.label}>{reg.label}</span>
+                    </div>
+                    <button
+                      onClick={() => setSelectedRegion(null)}
+                      className="text-white/80 hover:text-white text-xs leading-none"
+                      aria-label="关闭"
+                    >✕</button>
+                  </div>
+
+                  <div className="px-3 py-2">
+                    <div className="flex items-baseline justify-between mb-1.5">
+                      <span className="text-[11px] text-muted-foreground">Borg CR10</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-2xl font-black tabular-nums text-slate-900 leading-none">
+                          {score != null ? score : '—'}
+                        </span>
+                        {band && (
+                          <span
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-900 text-white text-[10px] font-bold"
+                          >
+                            <span className="inline-block w-2 h-2 rounded-sm" style={{ backgroundColor: band.fill }} />
+                            {band.label}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-11 gap-0.5 mb-1.5">
+                      {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => {
+                        const b = getRegionBand(n);
+                        const active = score === n;
+                        return (
+                          <button
+                            key={n}
+                            onClick={() => handleRegionScore(selectedRegion!, n)}
+                            className={`py-1 text-[10px] rounded border tabular-nums font-bold transition-all ${
+                              active
+                                ? 'border-slate-900 text-white bg-slate-900 shadow ring-2 ring-slate-900/30 scale-110'
+                                : 'border-border text-slate-900 bg-white hover:scale-105 hover:border-slate-900'
+                            }`}
+                            style={active ? { boxShadow: `0 0 0 2px ${b.fill}` } : undefined}
+                            title={`${n} 分 · ${b.label}`}
+                          >
+                            {n}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="flex items-center justify-between text-[9px] text-muted-foreground">
+                      <span>0=无疲劳</span>
+                      <span>5=中等</span>
+                      <span>10=极度</span>
+                    </div>
+                    {(regionScores[selectedRegion] != null || regionNotes[selectedRegion]) && (
+                      <button
+                        onClick={() => handleClearRegion(selectedRegion!)}
+                        className="mt-2 w-full py-1 text-[10px] text-muted-foreground hover:text-destructive border border-border rounded hover:border-destructive/30"
+                      >
+                        清除该区域评分
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
-          {/* 评分操作面板 */}
-          {selectedRegion && (
-            <div className="mt-3 p-3 bg-orange-50 border border-[#FF9500] rounded-lg">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <span className="inline-flex items-center justify-center w-6 h-6 rounded bg-[#FF9500] text-white text-xs font-bold">
-                    {HAND_REGIONS.find(r => r.id === selectedRegion)?.id}
-                  </span>
-                  <span className="text-sm text-gray-900">
-                    {HAND_REGIONS.find(r => r.id === selectedRegion)?.label}
-                  </span>
-                </div>
+          {/* 评分汇总表（默认折叠，summary 一行展示） */}
+          {(() => {
+            const entries = HAND_REGIONS.filter(r => regionScores[r.id] != null);
+            const scoredCount = entries.length;
+            const avg = scoredCount > 0
+              ? (entries.reduce((s, r) => s + (regionScores[r.id] || 0), 0) / scoredCount).toFixed(2)
+              : '0';
+            const heavyCount = entries.filter(r => (regionScores[r.id] ?? 0) >= 6).length;
+            const lightCount = entries.filter(r => (regionScores[r.id] ?? 0) <= 2).length;
+            return scoredCount > 0 ? (
+              <div className="mt-3 border border-border rounded overflow-hidden text-xs">
                 <button
-                  onClick={() => setSelectedRegion(null)}
-                  className="text-xs text-gray-500 hover:text-gray-700"
+                  onClick={() => setScoredListOpen(o => !o)}
+                  className="w-full flex items-center justify-between px-3 py-1.5 bg-muted hover:bg-accent transition"
                 >
-                  ✕
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    <span className="font-medium text-foreground">已评分汇总</span>
+                    <span className="text-muted-foreground tabular-nums">{scoredCount} / {HAND_REGIONS.length}</span>
+                    <span className="text-muted-foreground">· 均分 <strong className="text-foreground tabular-nums">{avg}</strong></span>
+                    <span className="text-muted-foreground">· 极重 <strong className="text-destructive tabular-nums">{heavyCount}</strong></span>
+                    <span className="text-muted-foreground">· 极轻 <strong className="text-node-context tabular-nums">{lightCount}</strong></span>
+                  </div>
+                  {scoredListOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                 </button>
+                {scoredListOpen && (
+                  <div className="p-2 bg-background border-t border-border">
+                    <div className="flex flex-wrap gap-1 mb-2">
+                      {entries.map(r => {
+                        const b = getRegionBand(regionScores[r.id]);
+                        return (
+                          <span
+                            key={r.id}
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-900 text-white text-[10px]"
+                          >
+                            <span className="inline-block w-2 h-2 rounded-sm" style={{ backgroundColor: b.fill }} />
+                            <strong>{r.id}</strong>
+                            <span className="tabular-nums font-bold">{regionScores[r.id]}</span>
+                            <span className="opacity-70 font-normal">{b.label}</span>
+                          </span>
+                        );
+                      })}
+                    </div>
+                    <button
+                      onClick={handleClearAllRegions}
+                      className="w-full py-1 text-[10px] text-muted-foreground hover:text-destructive border border-border rounded hover:border-destructive/30"
+                    >
+                      清除全部评分
+                    </button>
+                  </div>
+                )}
               </div>
-              <div className="text-xs text-gray-600 mb-2">
-                疲劳评分（0-10 Borg CR10）：
-                <span className="ml-2 font-bold text-[#FF9500] text-base">
-                  {regionScores[selectedRegion] ?? '—'}
-                </span>
-              </div>
-              <div className="grid grid-cols-11 gap-1 mb-2">
-                {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
-                  <button
-                    key={n}
-                    onClick={() => handleRegionScore(selectedRegion, n)}
-                    className={`py-1.5 text-xs rounded border transition-all ${
-                      regionScores[selectedRegion] === n
-                        ? 'border-[#FF9500] text-white font-bold shadow'
-                        : 'border-gray-200 text-gray-700 hover:border-[#FF9500] hover:bg-orange-50'
-                    }`}
-                    style={regionScores[selectedRegion] === n ? { backgroundColor: SCORE_COLOR[n] } : {}}
-                  >
-                    {n}
-                  </button>
-                ))}
-              </div>
-              <div className="flex items-center justify-between text-[10px] text-gray-500">
-                <span>0=无疲劳</span>
-                <span>5=中等</span>
-                <span>10=极度</span>
-              </div>
-              {(regionScores[selectedRegion] != null || regionNotes[selectedRegion]) && (
-                <button
-                  onClick={() => handleClearRegion(selectedRegion)}
-                  className="mt-2 w-full py-1 text-xs text-gray-500 hover:text-red-600 border border-gray-200 rounded hover:border-red-300"
-                >
-                  清除该区域评分
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* 评分汇总表 */}
-          {Object.keys(regionScores).length > 0 && (
-            <div className="mt-3 p-2 bg-gray-50 border border-gray-200 rounded text-xs">
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="font-medium text-gray-700">已评分区域</span>
-                <span className="text-gray-500">
-                  {Object.keys(regionScores).length} / 23 区
-                </span>
-              </div>
-              <div className="flex flex-wrap gap-1">
-                {HAND_REGIONS.filter(r => regionScores[r.id] != null).map(r => (
-                  <span
-                    key={r.id}
-                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-white"
-                    style={{ backgroundColor: SCORE_COLOR[regionScores[r.id]] }}
-                  >
-                    <strong>{r.id}</strong>
-                    <span>{regionScores[r.id]}</span>
-                  </span>
-                ))}
-              </div>
-              <button
-                onClick={handleClearAllRegions}
-                className="mt-2 w-full py-1 text-[10px] text-gray-500 hover:text-red-600"
-              >
-                清除全部评分
-              </button>
-            </div>
-          )}
+            ) : null;
+          })()}
         </div>
       </div>
     </div>

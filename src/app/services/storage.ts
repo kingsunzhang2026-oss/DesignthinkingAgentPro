@@ -5,15 +5,19 @@
  * 表：documents / prototype_assets / generated_models
  * Bucket（均 public）：knowledge-base / prototype-assets / generated-models
  *
- * RLS 为 MVP 宽松版（anon 可读写），上线前务必改为按 auth.uid() 隔离。
+ * 重要：所有 Storage/DB 操作统一走「匿名 client」（supabaseAnon）。
+ * 原因：prototype-assets 等 bucket 的 RLS 仅放行 anon 角色，用登录身份的
+ *       authenticated 角色反而会被拦截（录音上传曾因此失败，已修复为 anon 直传）。
+ *       这里同样处理，保证登录/未登录都能读写。
  */
 import { supabase } from '../utils/supabase/client';
 import { createClient } from '@supabase/supabase-js';
 import { projectId, publicAnonKey } from '../utils/supabase/info';
 
-// 录音上传专用匿名客户端：规避"已登录用户(authenticated)被 storage RLS 拦截"导致上传失败。
-// prototype-assets 为 public bucket，anon 已验证可写；登录/未登录均以此身份上传，确保一定能存云端。
-const supabaseAnon = createClient(
+// 匿名客户端：规避"已登录用户(authenticated)被 storage RLS 拦截"导致上传失败。
+// 所有 bucket 为 public 且 anon 已验证可写/可读；登录/未登录均以此身份操作。
+// 导出供 panelArchive 等其它服务复用（node_panel_data 等表 RLS 同样只放行 anon）。
+export const supabaseAnon = createClient(
   `https://${projectId}.supabase.co`,
   publicAnonKey,
   { auth: { persistSession: false, autoRefreshToken: false } },
@@ -56,14 +60,14 @@ function sanitize(name: string): string {
 
 export async function uploadKnowledgeDoc(file: File): Promise<KnowledgeDoc> {
   const path = `${Date.now()}_${sanitize(file.name)}`;
-  const { error: upErr } = await supabase.storage
+  const { error: upErr } = await supabaseAnon.storage
     .from('knowledge-base')
     .upload(path, file, { cacheControl: '3600', upsert: false });
   if (upErr) throw new Error('文档上传失败: ' + upErr.message);
 
-  const { data: urlData } = supabase.storage.from('knowledge-base').getPublicUrl(path);
+  const { data: urlData } = supabaseAnon.storage.from('knowledge-base').getPublicUrl(path);
 
-  const { data, error: dbErr } = await supabase
+  const { data, error: dbErr } = await supabaseAnon
     .from('documents')
     .insert({
       name: file.name,
@@ -79,7 +83,7 @@ export async function uploadKnowledgeDoc(file: File): Promise<KnowledgeDoc> {
 }
 
 export async function getKnowledgeDocs(): Promise<KnowledgeDoc[]> {
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAnon
     .from('documents')
     .select('*')
     .order('uploaded_at', { ascending: false });
@@ -89,9 +93,9 @@ export async function getKnowledgeDocs(): Promise<KnowledgeDoc[]> {
 
 export async function deleteKnowledgeDoc(doc: KnowledgeDoc): Promise<void> {
   if (doc.storage_path) {
-    await supabase.storage.from('knowledge-base').remove([doc.storage_path]);
+    await supabaseAnon.storage.from('knowledge-base').remove([doc.storage_path]);
   }
-  const { error } = await supabase.from('documents').delete().eq('id', doc.id);
+  const { error } = await supabaseAnon.from('documents').delete().eq('id', doc.id);
   if (error) throw new Error(error.message);
 }
 
@@ -109,14 +113,14 @@ export async function uploadPrototypeAsset(params: {
   source?: string;
 }): Promise<PrototypeAsset> {
   const path = `${params.nodeId}/${Date.now()}_${sanitize(params.file.name)}`;
-  const { error: upErr } = await supabase.storage
+  const { error: upErr } = await supabaseAnon.storage
     .from('prototype-assets')
     .upload(path, params.file, { cacheControl: '3600', upsert: false });
   if (upErr) throw new Error('资产上传失败: ' + upErr.message);
 
-  const { data: urlData } = supabase.storage.from('prototype-assets').getPublicUrl(path);
+  const { data: urlData } = supabaseAnon.storage.from('prototype-assets').getPublicUrl(path);
 
-  const { data, error: dbErr } = await supabase
+  const { data, error: dbErr } = await supabaseAnon
     .from('prototype_assets')
     .insert({
       node_id: params.nodeId,
@@ -139,15 +143,16 @@ export async function uploadPrototypeAsset(params: {
  */
 export async function uploadReferenceImageGetUrl(file: File, nodeId: string): Promise<string> {
   const path = `${nodeId}/refs/${Date.now()}_${sanitize(file.name)}`;
-  const { error: upErr } = await supabase.storage
+  const { error: upErr } = await supabaseAnon.storage
     .from('prototype-assets')
     .upload(path, file, { cacheControl: '3600', upsert: false });
   if (upErr) throw new Error('参考图上传失败: ' + upErr.message);
-  return supabase.storage.from('prototype-assets').getPublicUrl(path).data.publicUrl;
+  return supabaseAnon.storage.from('prototype-assets').getPublicUrl(path).data.publicUrl;
 }
 
 /**
- * 将 Tripo 生成的 GLB 转存到 generated-models bucket（规避签名 URL 过期/CORS），
+ * 将 Tripo 生成的 GLB 转存到 Storage（优先 generated-models bucket；若该 bucket 未创建
+ * 或写入失败，自动回退 prototype-assets，保证生成模型可持久化），
  * 同时写入 generated_models 审计表 + prototype_assets 资产表。
  * 返回可直接在 <model-viewer> 中加载的公开 URL。
  */
@@ -159,30 +164,42 @@ export async function saveGeneratedModel(params: {
   glbArrayBuffer: ArrayBuffer;
   fileName: string;
 }): Promise<PrototypeAsset> {
-  const path = `${params.nodeId}/generated/${Date.now()}_${sanitize(params.fileName)}`;
-  const { error: upErr } = await supabase.storage
-    .from('generated-models')
-    .upload(path, params.glbArrayBuffer, {
-      cacheControl: '3600',
-      upsert: false,
-      contentType: 'model/gltf-binary',
-    });
-  if (upErr) throw new Error('GLB 转存失败: ' + upErr.message);
+  const stamp = Date.now();
+  const safeName = sanitize(params.fileName);
+  const uploadOpts = {
+    cacheControl: '3600',
+    upsert: false,
+    contentType: 'model/gltf-binary',
+  };
 
-  const { data: urlData } = supabase.storage.from('generated-models').getPublicUrl(path);
+  // 优先 generated-models，失败（bucket 缺失 / RLS）回退 prototype-assets
+  let bucket = 'generated-models';
+  let path = `${params.nodeId}/generated/${stamp}_${safeName}`;
+  const first = await supabaseAnon.storage.from(bucket).upload(path, params.glbArrayBuffer, uploadOpts);
+  if (first.error) {
+    console.warn(`[storage] ${bucket} 上传失败，回退 prototype-assets:`, first.error.message);
+    bucket = 'prototype-assets';
+    path = `${params.nodeId}/generated/${stamp}_${safeName}`;
+    const fb = await supabaseAnon.storage.from(bucket).upload(path, params.glbArrayBuffer, uploadOpts);
+    if (fb.error) throw new Error('GLB 转存失败: ' + fb.error.message);
+  }
 
-  // 审计记录
-  await supabase.from('generated_models').insert({
+  const { data: urlData } = supabaseAnon.storage.from(bucket).getPublicUrl(path);
+
+  // 审计记录（bucket 缺失时也记录，避免插表失败阻断主流程）
+  const audErr = await supabaseAnon.from('generated_models').insert({
     task_id: params.taskId,
     mode: params.mode,
     tier: params.tier,
     status: 'success',
     model_url: urlData.publicUrl,
     storage_path: path,
+    storage_bucket: bucket,
   });
+  if (audErr.error) console.warn('[storage] generated_models 审计写入失败:', audErr.error.message);
 
   // 资产记录（面板展示用）
-  const { data, error: dbErr } = await supabase
+  const { data, error: dbErr } = await supabaseAnon
     .from('prototype_assets')
     .insert({
       node_id: params.nodeId,
@@ -201,7 +218,7 @@ export async function saveGeneratedModel(params: {
 }
 
 export async function getPrototypeAssets(nodeId: string): Promise<PrototypeAsset[]> {
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAnon
     .from('prototype_assets')
     .select('*')
     .eq('node_id', nodeId)
@@ -210,12 +227,28 @@ export async function getPrototypeAssets(nodeId: string): Promise<PrototypeAsset
   return (data || []) as PrototypeAsset[];
 }
 
+/** 获取全部原型资产（存档中心集中查看用） */
+export async function getAllPrototypeAssets(limit = 500): Promise<PrototypeAsset[]> {
+  const { data, error } = await supabaseAnon
+    .from('prototype_assets')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+  return (data || []) as PrototypeAsset[];
+}
+
 export async function deletePrototypeAsset(asset: PrototypeAsset): Promise<void> {
   if (asset.storage_path) {
-    const bucket = asset.type === 'generated_glb' ? 'generated-models' : 'prototype-assets';
-    await supabase.storage.from(bucket).remove([asset.storage_path]);
+    // generated_glb 可能落在 generated-models 或回退的 prototype-assets，两个 bucket 都尝试删除
+    const buckets = asset.type === 'generated_glb'
+      ? ['generated-models', 'prototype-assets']
+      : ['prototype-assets'];
+    for (const b of buckets) {
+      await supabaseAnon.storage.from(b).remove([asset.storage_path]);
+    }
   }
-  const { error } = await supabase.from('prototype_assets').delete().eq('id', asset.id);
+  const { error } = await supabaseAnon.from('prototype_assets').delete().eq('id', asset.id);
   if (error) throw new Error(error.message);
 }
 

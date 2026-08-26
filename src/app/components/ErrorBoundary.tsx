@@ -86,33 +86,33 @@ export class ErrorBoundary extends Component<Props, State> {
                           this.state.error?.message.includes('WASM');
 
       return (
-        <div className="min-h-screen bg-[#F5F5F7] flex items-center justify-center p-6">
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full p-8">
+        <div className="min-h-screen bg-background flex items-center justify-center p-6">
+          <div className="bg-card rounded-lg shadow-xl max-w-2xl w-full p-8">
             <div className="flex items-start gap-4 mb-6">
               <div className="flex-shrink-0">
-                <AlertTriangle className={`w-8 h-8 ${isWasmError ? 'text-red-500' : 'text-[#FF9500]'}`} />
+                <AlertTriangle className={`w-8 h-8 ${isWasmError ? 'text-destructive' : 'text-node-solution'}`} />
               </div>
               <div className="flex-1">
-                <h2 className="text-xl text-gray-900 mb-2">
+                <h2 className="text-xl text-foreground mb-2">
                   {isWasmError ? '🔴 WASM 错误' : '应用出现错误'}
                 </h2>
-                <p className="text-sm text-gray-600 mb-4">
+                <p className="text-sm text-muted-foreground mb-4">
                   抱歉，应用遇到了一个意外错误。
                 </p>
                 
                 {/* 错误详情 */}
-                <div className="bg-gray-50 rounded border border-gray-200 p-4 mb-4">
-                  <p className="text-xs text-gray-500 mb-2">错误详情：</p>
-                  <pre className="text-xs text-gray-900 whitespace-pre-wrap break-words">
+                <div className="bg-muted rounded border border-border p-4 mb-4">
+                  <p className="text-xs text-muted-foreground mb-2">错误详情：</p>
+                  <pre className="text-xs text-foreground whitespace-pre-wrap break-words">
                     {this.state.errorInfo}
                   </pre>
                 </div>
 
                 {/* WASM 错误提示 */}
                 {isWasmError && (
-                  <div className="bg-red-50 border border-red-200 rounded p-4 mb-4">
-                    <p className="text-sm text-red-900 mb-2">🔴 WASM 错误诊断</p>
-                    <ul className="text-xs text-red-800 space-y-1 list-disc list-inside">
+                  <div className="bg-destructive/10 border border-destructive/30 rounded p-4 mb-4">
+                    <p className="text-sm text-destructive mb-2">🔴 WASM 错误诊断</p>
+                    <ul className="text-xs text-destructive space-y-1 list-disc list-inside">
                       <li>检查是否有新安装的依赖包</li>
                       <li>确认没有使用 pdf.js、mammoth 等 WASM 库</li>
                       <li>查看浏览器控制台的完整错误堆栈</li>
@@ -125,14 +125,14 @@ export class ErrorBoundary extends Component<Props, State> {
                 <div className="flex gap-3">
                   <button
                     onClick={this.handleReload}
-                    className="flex-1 bg-[#007AFF] hover:bg-[#0051D5] text-white px-4 py-2 rounded flex items-center justify-center gap-2 transition-colors"
+                    className="flex-1 bg-node-behavior hover:bg-node-behavior/80 text-white px-4 py-2 rounded flex items-center justify-center gap-2 transition-colors"
                   >
                     <RefreshCw className="w-4 h-4" />
                     刷新页面
                   </button>
                   <button
                     onClick={this.handleReset}
-                    className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded transition-colors"
+                    className="flex-1 bg-secondary hover:bg-accent text-foreground px-4 py-2 rounded transition-colors"
                   >
                     尝试恢复
                   </button>
@@ -140,10 +140,10 @@ export class ErrorBoundary extends Component<Props, State> {
 
                 {/* 调试信息 */}
                 <details className="mt-4">
-                  <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-700">
+                  <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
                     显示完整堆栈（开发者）
                   </summary>
-                  <pre className="mt-2 text-xs text-gray-600 bg-gray-50 p-3 rounded border border-gray-200 overflow-auto max-h-48">
+                  <pre className="mt-2 text-xs text-muted-foreground bg-muted p-3 rounded border border-border overflow-auto max-h-48">
                     {this.state.error?.stack || '无堆栈信息'}
                   </pre>
                 </details>

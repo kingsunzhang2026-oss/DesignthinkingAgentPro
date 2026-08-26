@@ -79,6 +79,24 @@ const CONNECTION_DELIVERY: Record<string, (source: any, ctx: { fromNodeId: strin
       scenarios,
     };
   },
+  // 方案节点 → 行为节点：把生成的 ID 外观方案（variants A/B/C...）投递到行为面板
+  // 行为面板据此切换为"ID方案模式"：tabs = 各 variant，任务 = T1基本握持/T2精准操作/T3智能UI界面(可选)
+  // 即使 variants 为空也返回 {} 数组，行为面板据此显示"等待方案生成"空态
+  'solution->behavior': (src) => {
+    if (!src) return undefined;
+    const variants = Array.isArray(src.variants)
+      ? src.variants
+          .filter((v: any) => v && (v.id || v.label))
+          .map((v: any) => ({
+            id: v.id,
+            label: v.label,
+            prompt: v.prompt,
+            previewUrl: v.previewUrl,
+            assetId: v.assetId,
+          }))
+      : [];
+    return { variants };
+  },
 };
 
 export function DesignProvider({ children }: { children: React.ReactNode }) {
@@ -112,8 +130,8 @@ export function DesignProvider({ children }: { children: React.ReactNode }) {
       }
 
       const payload = transformer(source, { fromNodeId, toNodeId });
-      if (payload === undefined || payload === null) return;
-
+      // transformer 未产出业务数据时，也投递最小连接标记，让目标面板能感知"已连线"
+      // （例如方案节点尚未生成 variants 时，行为面板仍可切换为 ID 方案模式并显示空态）
       setDeliveries((prev) => ({
         ...prev,
         [toNodeId]: {
@@ -121,7 +139,7 @@ export function DesignProvider({ children }: { children: React.ReactNode }) {
           fromType,
           toNodeId,
           toType,
-          data: payload,
+          data: payload === undefined || payload === null ? { connected: true } : payload,
           token: (prev[toNodeId]?.token ?? 0) + 1,
           at: new Date().toISOString(),
         },

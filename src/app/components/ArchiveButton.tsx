@@ -42,7 +42,7 @@ export function ArchiveButton({
 
   return (
     <div className={`flex items-center gap-2 ${className}`}>
-      <span className="text-[10px] text-gray-400" title={tsText}>
+      <span className="text-[10px] text-muted-foreground" title={tsText}>
         {tsText}
       </span>
       {onReset && (
@@ -50,7 +50,7 @@ export function ArchiveButton({
           onClick={() => {
             if (confirm('确认清空当前节点的存档数据？')) onReset();
           }}
-          className="px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 rounded"
+          className="px-2 py-1 text-xs text-muted-foreground hover:bg-accent rounded"
           title="清空存档"
         >
           <RotateCcw className="w-3 h-3" />
@@ -61,8 +61,8 @@ export function ArchiveButton({
         disabled={saving}
         className={`flex items-center gap-1 px-3 py-1.5 text-xs rounded border transition-colors disabled:opacity-50 ${
           justSaved
-            ? 'bg-green-50 text-green-700 border-green-200'
-            : 'bg-[#007AFF] text-white border-[#007AFF] hover:bg-[#0051D5]'
+            ? 'bg-node-context/10 text-node-context border-node-context/20'
+            : 'bg-node-behavior text-white border-node-behavior hover:bg-node-behavior/80'
         }`}
       >
         {saving ? (

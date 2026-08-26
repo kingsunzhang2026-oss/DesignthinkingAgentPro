@@ -8,14 +8,46 @@
       <title>Designthinking Agent Pro Prototype</title>
       <meta name="description" content="Streamline database management with intuitive design thinking tools, enhancing user experience and efficiency for teams needing effective data solutions." />
       <meta name="robots" content="noindex, nofollow" />
-      <style>html, body { height: 100%; margin: 0; } #root { height: 100%; }</style>
+      <style>html, body { height: 100%; margin: 0; } #root { height: 100%; }
+        #load-fallback{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:#0F172A;color:#fff;font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;z-index:9999;text-align:center;padding:24px}
+        #load-fallback .box{max-width:420px;line-height:1.7}
+        #load-fallback button{margin-top:18px;padding:10px 22px;border:0;border-radius:8px;background:#2563eb;color:#fff;font-size:15px;cursor:pointer}
+      </style>
+      <!-- 资源加载自愈：CloudStudio CDN 边缘节点偶发 400 时，样式表自动重试注入 -->
+      <script>
+        function __cssSelfHeal(){
+          try{
+            document.querySelectorAll('link[rel="stylesheet"]').forEach(function(l){
+              if(!l.sheet){
+                var n = l.cloneNode();
+                n.href = l.href.split('?')[0] + '?retry=' + Date.now() + '_' + (Math.random()*1e6|0);
+                n.onload = function(){ if(l && l.parentNode) l.remove(); };
+                if(l.parentNode) l.parentNode.insertBefore(n, l);
+              }
+            });
+          }catch(e){}
+        }
+        function __showLoadFallback(){ var f=document.getElementById('load-fallback'); if(f) f.style.display='flex'; }
+        window.addEventListener('load', function(){
+          setTimeout(__cssSelfHeal, 400);
+          setTimeout(__cssSelfHeal, 1800);
+          setTimeout(__cssSelfHeal, 5000);
+        });
+      </script>
       
     </head>
 
     <body>
       
       <div id="root"></div>
-      <script type="module" src="/src/main.tsx"></script>
+      <div id="load-fallback">
+        <div class="box">
+          <div>页面资源加载失败（CDN 偶发错误）</div>
+          <div style="opacity:.7;font-size:13px;margin-top:8px">请点击刷新重试一次即可正常打开</div>
+          <button onclick="location.reload(true)">点击刷新重试</button>
+        </div>
+      </div>
+      <script type="module" src="/src/main.tsx" onerror="__showLoadFallback()"></script>
       
     </body>
   </html>

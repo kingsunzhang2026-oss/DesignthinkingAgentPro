@@ -267,27 +267,27 @@ export function AlignmentPanel({ onAnalysisComplete, knowledgeBase = [], taskSeq
     <div className="p-6 space-y-6 relative">
       {/* Missing Data Warning Dialog */}
       {showMissingDataWarning && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center p-4 bg-white/80 backdrop-blur-sm rounded-lg">
-          <div className="bg-white border border-red-200 shadow-xl rounded-xl p-6 max-w-sm w-full animate-in zoom-in-95 duration-200">
-            <div className="flex items-center gap-3 mb-4 text-red-600">
-              <div className="p-2 bg-red-100 rounded-full">
+        <div className="absolute inset-0 z-50 flex items-center justify-center p-4 bg-card/80 backdrop-blur-sm rounded-lg">
+          <div className="bg-card border border-destructive/30 shadow-xl rounded-xl p-6 max-w-sm w-full animate-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-3 mb-4 text-destructive">
+              <div className="p-2 bg-destructive/10 rounded-full">
                 <AlertTriangle className="w-6 h-6" />
               </div>
               <h3 className="font-semibold text-lg">数据未录入完整</h3>
             </div>
-            <p className="text-gray-600 mb-6 text-sm leading-relaxed">
+            <p className="text-muted-foreground mb-6 text-sm leading-relaxed">
               检测到部分测试任务的记录点尚未填写数据。为了保证对齐分析报告的准确性，建议您完善所有测试数据。
             </p>
             <div className="flex gap-3 justify-end">
               <button
                 onClick={() => setShowMissingDataWarning(false)}
-                className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                className="px-4 py-2 text-sm text-muted-foreground hover:bg-accent rounded-lg transition-colors"
               >
                 返回录入
               </button>
               <button
                 onClick={runAnalysis}
-                className="px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg shadow-sm transition-colors"
+                className="px-4 py-2 text-sm bg-destructive hover:bg-destructive/80 text-white rounded-lg shadow-sm transition-colors"
               >
                 忽略并继续
               </button>
@@ -300,7 +300,7 @@ export function AlignmentPanel({ onAnalysisComplete, knowledgeBase = [], taskSeq
         <button
           onClick={handleAnalyzeClick}
           disabled={analyzing}
-          className="w-full bg-[#007AFF] hover:bg-[#0051D5] text-white px-4 py-3 rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+          className="w-full bg-node-behavior hover:bg-node-behavior/80 text-white px-4 py-3 rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
         >
           {analyzing ? <Loader2 className="w-5 h-5 animate-spin" /> : <TrendingUp className="w-5 h-5" />}
           <span>执行对齐分析</span>
@@ -310,9 +310,9 @@ export function AlignmentPanel({ onAnalysisComplete, knowledgeBase = [], taskSeq
       {analyzed && (
         <>
           {/* Data Source Info */}
-          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-            <div className="text-xs text-gray-700 mb-1">📊 分析数据来源</div>
-            <div className="text-xs text-gray-600">
+          <div className="p-3 bg-node-behavior/10 border border-node-behavior/20 rounded-lg">
+            <div className="text-xs text-foreground mb-1">📊 分析数据来源</div>
+            <div className="text-xs text-muted-foreground">
               <p>• B1 设计要求: 来自产品规格说明书</p>
               <p>• B2 实际测试: 来自行为SOP节点的记录点数据</p>
               <p>• 知识库参考: 使用内置标准库</p>
@@ -321,37 +321,37 @@ export function AlignmentPanel({ onAnalysisComplete, knowledgeBase = [], taskSeq
 
           {/* Comparison View */}
           <div className="grid grid-cols-2 gap-4">
-            <div className="border border-gray-200 rounded-lg p-4 bg-white">
-              <h3 className="text-sm text-gray-900 mb-3">{comparisonData.b1.title}</h3>
+            <div className="border border-border rounded-lg p-4 bg-card">
+              <h3 className="text-sm text-foreground mb-3">{comparisonData.b1.title}</h3>
               <div className="space-y-2">
                 {comparisonData.b1.items.map((item, idx) => (
                   <div key={idx}>
-                    <div className="text-xs text-gray-600">{item.label}</div>
-                    <div className="text-sm text-gray-900">{item.value}</div>
+                    <div className="text-xs text-muted-foreground">{item.label}</div>
+                    <div className="text-sm text-foreground">{item.value}</div>
                   </div>
                 ))}
               </div>
             </div>
 
-            <div className="border border-gray-200 rounded-lg p-4 bg-white">
-              <h3 className="text-sm text-gray-900 mb-3">{comparisonData.b2.title}</h3>
+            <div className="border border-border rounded-lg p-4 bg-card">
+              <h3 className="text-sm text-foreground mb-3">{comparisonData.b2.title}</h3>
               <div className="space-y-2">
                 {comparisonData.b2.items.map((item, idx) => (
                   <div key={idx}>
-                    <div className="text-xs text-gray-600">{item.label}</div>
+                    <div className="text-xs text-muted-foreground">{item.label}</div>
                     <div className="flex items-center justify-between">
                       <div className={`text-sm ${
-                        item.status === 'ok' ? 'text-green-600' :
-                        item.status === 'warning' ? 'text-[#FF9500]' :
-                        item.status === 'error' ? 'text-red-600' :
-                        'text-gray-900'
+                        item.status === 'ok' ? 'text-node-context' :
+                        item.status === 'warning' ? 'text-node-solution' :
+                        item.status === 'error' ? 'text-destructive' :
+                        'text-foreground'
                       }`}>
                         {item.value}
                       </div>
                       {item.deviation && (
                         <span className={`text-xs px-2 py-0.5 rounded ${
-                          item.status === 'warning' ? 'bg-orange-100 text-[#FF9500]' :
-                          'bg-red-100 text-red-600'
+                          item.status === 'warning' ? 'bg-node-solution/10 text-node-solution' :
+                          'bg-destructive/10 text-destructive'
                         }`}>
                           {item.deviation}
                         </span>
@@ -364,28 +364,28 @@ export function AlignmentPanel({ onAnalysisComplete, knowledgeBase = [], taskSeq
           </div>
 
           {/* Radar Chart */}
-          <div className="border border-gray-200 rounded-lg p-4 bg-white">
-            <h3 className="text-sm text-gray-900 mb-3">设计初衷 vs 实际表现</h3>
+          <div className="border border-border rounded-lg p-4 bg-card">
+            <h3 className="text-sm text-foreground mb-3">设计初衷 vs 实际表现</h3>
             <ResponsiveContainer width="100%" height={280}>
               <RadarChart data={radarData}>
-                <PolarGrid stroke="#E5E7EB" />
+                <PolarGrid stroke="rgba(255,255,255,0.12)" />
                 <PolarAngleAxis 
                   dataKey="dimension" 
-                  tick={{ fill: '#6B7280', fontSize: 11 }}
+                  tick={{ fill: '#A1A1AA', fontSize: 11 }}
                 />
-                <PolarRadiusAxis angle={90} domain={[0, 100]} tick={{ fill: '#6B7280', fontSize: 10 }} />
+                <PolarRadiusAxis angle={90} domain={[0, 100]} tick={{ fill: '#A1A1AA', fontSize: 10 }} />
                 <Radar
                   name="设计预期"
                   dataKey="design"
-                  stroke="#007AFF"
-                  fill="#007AFF"
+                  stroke="#60A5FA"
+                  fill="#60A5FA"
                   fillOpacity={0.2}
                 />
                 <Radar
                   name="实际测试"
                   dataKey="actual"
-                  stroke="#FF9500"
-                  fill="#FF9500"
+                  stroke="#FB923C"
+                  fill="#FB923C"
                   fillOpacity={0.3}
                 />
                 <Legend 
@@ -397,25 +397,25 @@ export function AlignmentPanel({ onAnalysisComplete, knowledgeBase = [], taskSeq
           </div>
 
           {/* AI Analysis Results */}
-          <div className="border border-[#007AFF] rounded-lg p-4 bg-white">
-            <h3 className="text-sm text-gray-900 mb-3 flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-[#007AFF]" />
+          <div className="border border-node-behavior rounded-lg p-4 bg-card">
+            <h3 className="text-sm text-foreground mb-3 flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-node-behavior" />
               国标知识库诊断
             </h3>
             <div className="space-y-3">
               {deviations.map((deviation, idx) => (
                 <div key={idx} className="flex items-start gap-3">
-                  <AlertTriangle className={`w-5 h-5 ${deviation.severity === 'warning' ? 'text-[#FF9500]' : 'text-red-600'} flex-shrink-0 mt-0.5`} />
+                  <AlertTriangle className={`w-5 h-5 ${deviation.severity === 'warning' ? 'text-node-solution' : 'text-destructive'} flex-shrink-0 mt-0.5`} />
                   <div>
-                    <div className="text-sm text-gray-900 mb-1">{deviation.title}</div>
-                    <p className="text-xs text-gray-600 mb-2">
+                    <div className="text-sm text-foreground mb-1">{deviation.title}</div>
+                    <p className="text-xs text-muted-foreground mb-2">
                       {deviation.description}
                     </p>
                     <div className="flex items-center gap-2">
-                      <span className={`text-xs px-2 py-0.5 rounded ${deviation.severity === 'warning' ? 'bg-orange-100 text-[#FF9500]' : 'bg-red-100 text-red-600'}`}>
+                      <span className={`text-xs px-2 py-0.5 rounded ${deviation.severity === 'warning' ? 'bg-node-solution/10 text-node-solution' : 'bg-destructive/10 text-destructive'}`}>
                         {deviation.priority}
                       </span>
-                      <span className="text-xs text-gray-500">预期改善: {deviation.improvement}</span>
+                      <span className="text-xs text-muted-foreground">预期改善: {deviation.improvement}</span>
                     </div>
                   </div>
                 </div>
@@ -424,16 +424,16 @@ export function AlignmentPanel({ onAnalysisComplete, knowledgeBase = [], taskSeq
           </div>
 
           {/* Export Button */}
-          <button className="w-full border border-[#007AFF] text-[#007AFF] hover:bg-blue-50 px-4 py-3 rounded-lg transition-colors">
+          <button className="w-full border border-node-behavior text-node-behavior hover:bg-node-behavior/10 px-4 py-3 rounded-lg transition-colors">
             导出完整报告 (PDF)
           </button>
         </>
       )}
 
       {error && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-          <div className="text-xs text-gray-700 mb-1">🚨 错误信息</div>
-          <div className="text-xs text-gray-600">
+        <div className="p-3 bg-destructive/10 border border-destructive/30 rounded-lg">
+          <div className="text-xs text-foreground mb-1">🚨 错误信息</div>
+          <div className="text-xs text-muted-foreground">
             {error}
           </div>
         </div>

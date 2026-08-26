@@ -89,13 +89,13 @@ export function LoginModal({ isOpen, onClose, onLoginSuccess }: LoginModalProps)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+      <div className="bg-card rounded-lg shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
         
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gray-50">
-          <h3 className="text-lg font-semibold text-gray-800">用户登录</h3>
-          <button onClick={onClose} className="p-1 hover:bg-gray-200 rounded-full transition-colors">
-            <X className="w-5 h-5 text-gray-500" />
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-muted">
+          <h3 className="text-lg font-semibold text-foreground">用户登录</h3>
+          <button onClick={onClose} className="p-1 hover:bg-secondary rounded-full transition-colors">
+            <X className="w-5 h-5 text-muted-foreground" />
           </button>
         </div>
 
@@ -103,36 +103,36 @@ export function LoginModal({ isOpen, onClose, onLoginSuccess }: LoginModalProps)
         <div className="p-6">
           <form onSubmit={handleLogin} className="space-y-4">
             {error && (
-              <div className="p-3 text-sm text-red-600 bg-red-50 border border-red-100 rounded-md">
+              <div className="p-3 text-sm text-destructive bg-destructive/10 border border-border rounded-md">
                 {error}
               </div>
             )}
             
             <div className="space-y-1">
-              <label className="text-sm font-medium text-gray-700">账号 (Email)</label>
+              <label className="text-sm font-medium text-foreground">账号 (Email)</label>
               <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="admin@make.com"
-                  className="w-full pl-9 pr-4 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#007AFF] focus:border-transparent"
+                  className="w-full pl-9 pr-4 py-2 text-sm border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-node-behavior focus:border-transparent"
                   required
                 />
               </div>
             </div>
 
             <div className="space-y-1">
-              <label className="text-sm font-medium text-gray-700">密码</label>
+              <label className="text-sm font-medium text-foreground">密码</label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <input
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="admin123"
-                  className="w-full pl-9 pr-4 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#007AFF] focus:border-transparent"
+                  className="w-full pl-9 pr-4 py-2 text-sm border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-node-behavior focus:border-transparent"
                   required
                 />
               </div>
@@ -141,24 +141,24 @@ export function LoginModal({ isOpen, onClose, onLoginSuccess }: LoginModalProps)
             <button
               type="submit"
               disabled={isLoading || isInitializing}
-              className="w-full flex items-center justify-center gap-2 py-2.5 bg-[#007AFF] text-white text-sm font-medium rounded-md hover:bg-[#0062CC] transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
+              className="w-full flex items-center justify-center gap-2 py-2.5 bg-node-behavior text-white text-sm font-medium rounded-md hover:bg-node-behavior/80 transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
             >
               {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
               登录
             </button>
           </form>
 
-          <div className="mt-6 pt-4 border-t border-gray-100">
-             <div className="flex flex-col gap-2 text-xs text-gray-500">
+          <div className="mt-6 pt-4 border-t border-border">
+             <div className="flex flex-col gap-2 text-xs text-muted-foreground">
                 <p className="font-medium">演示账号说明:</p>
                 <div className="grid grid-cols-2 gap-2">
-                    <div className="bg-gray-50 p-2 rounded border border-gray-200">
-                        <span className="block font-semibold text-gray-700">管理员</span>
+                    <div className="bg-muted p-2 rounded border border-border">
+                        <span className="block font-semibold text-foreground">管理员</span>
                         账号: admin@make.com<br/>
                         密码: admin123
                     </div>
-                    <div className="bg-gray-50 p-2 rounded border border-gray-200">
-                        <span className="block font-semibold text-gray-700">操作员 (1-10)</span>
+                    <div className="bg-muted p-2 rounded border border-border">
+                        <span className="block font-semibold text-foreground">操作员 (1-10)</span>
                         账号: operator1@make.com<br/>
                         密码: 123456
                     </div>
@@ -168,7 +168,7 @@ export function LoginModal({ isOpen, onClose, onLoginSuccess }: LoginModalProps)
                   type="button"
                   onClick={handleInitDemoUsers}
                   disabled={isInitializing}
-                  className="mt-2 flex items-center justify-center gap-1.5 w-full py-2 bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 rounded transition-colors"
+                  className="mt-2 flex items-center justify-center gap-1.5 w-full py-2 bg-node-value/10 text-node-value hover:bg-node-value/20 border border-node-value/30 rounded transition-colors"
                 >
                     {isInitializing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Server className="w-3 h-3" />}
                     更新/重置演示账号 (使用新密码)

@@ -108,20 +108,20 @@ export function ContextPanel({ scenarios, onScenariosChange, knowledgeBase }: Co
     <div className="p-6 space-y-6">
       {/* Device Input */}
       <div>
-        <label className="block text-sm text-gray-700 mb-2">设备名称</label>
+        <label className="block text-sm text-foreground mb-2">设备名称</label>
         <input
           type="text"
           value={deviceName}
           placeholder="例如：腹腔镜用智能电动吻合器"
           onChange={(e) => setDeviceName(e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#007AFF] focus:border-transparent"
+          className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-node-behavior focus:border-transparent"
         />
       </div>
 
       {/* AI Generate Button */}
       <button 
         onClick={handleAIGenerate}
-        className="w-full bg-[#007AFF] hover:bg-[#0051D5] text-white px-4 py-3 rounded-lg flex items-center justify-center gap-2 transition-colors"
+        className="w-full bg-node-behavior hover:bg-node-behavior/80 text-white px-4 py-3 rounded-lg flex items-center justify-center gap-2 transition-colors"
       >
         {isGenerating ? (
           <Loader2 className="w-5 h-5 animate-spin" />
@@ -132,19 +132,19 @@ export function ContextPanel({ scenarios, onScenariosChange, knowledgeBase }: Co
       </button>
 
       {generationProgress && (
-        <div className="text-xs text-gray-600 bg-blue-50 p-2 rounded border border-blue-200">
+        <div className="text-xs text-muted-foreground bg-node-behavior/10 p-2 rounded border border-node-behavior/20">
           💡 {generationProgress}
         </div>
       )}
 
       {generationError && (
-        <div className="text-xs text-red-600 bg-red-50 p-2 rounded border border-red-200">
+        <div className="text-xs text-destructive bg-destructive/10 p-2 rounded border border-destructive/30">
           💡 {generationError}
         </div>
       )}
 
       {knowledgeBase.length > 0 && (
-        <div className="text-xs text-gray-600 bg-blue-50 p-2 rounded border border-blue-200">
+        <div className="text-xs text-muted-foreground bg-node-behavior/10 p-2 rounded border border-node-behavior/20">
           💡 基于 {knowledgeBase.length} 个知识库文档生成场景
         </div>
       )}
@@ -152,10 +152,10 @@ export function ContextPanel({ scenarios, onScenariosChange, knowledgeBase }: Co
       {/* Scenarios */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm text-gray-700">生成的场景清单</h3>
+          <h3 className="text-sm text-foreground">生成的场景清单</h3>
           <button
             onClick={() => setShowAddForm(true)}
-            className="text-sm text-[#007AFF] hover:text-[#0051D5] flex items-center gap-1"
+            className="text-sm text-node-behavior hover:text-node-behavior/80 flex items-center gap-1"
           >
             <Plus className="w-4 h-4" />
             新增场景
@@ -164,35 +164,35 @@ export function ContextPanel({ scenarios, onScenariosChange, knowledgeBase }: Co
 
         {/* Add New Scenario Form */}
         {showAddForm && (
-          <div className="mb-4 border border-[#007AFF] rounded-lg p-4 bg-blue-50">
-            <h4 className="text-sm text-gray-900 mb-3">新增场景</h4>
+          <div className="mb-4 border border-node-behavior rounded-lg p-4 bg-node-behavior/10">
+            <h4 className="text-sm text-foreground mb-3">新增场景</h4>
             <div className="space-y-3">
               <div>
-                <label className="block text-xs text-gray-600 mb-1">场景类型</label>
+                <label className="block text-xs text-muted-foreground mb-1">场景类型</label>
                 <input
                   type="text"
                   value={newScenario.type}
                   onChange={(e) => setNewScenario({ ...newScenario, type: e.target.value })}
-                  className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-[#007AFF] focus:border-transparent"
+                  className="w-full px-2 py-1.5 text-sm border border-border rounded focus:outline-none focus:ring-2 focus:ring-node-behavior focus:border-transparent"
                   placeholder="例如：长尾临床场景 3"
                 />
               </div>
               <div>
-                <label className="block text-xs text-gray-600 mb-1">场景标题</label>
+                <label className="block text-xs text-muted-foreground mb-1">场景标题</label>
                 <input
                   type="text"
                   value={newScenario.title}
                   onChange={(e) => setNewScenario({ ...newScenario, title: e.target.value })}
-                  className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-[#007AFF] focus:border-transparent"
+                  className="w-full px-2 py-1.5 text-sm border border-border rounded focus:outline-none focus:ring-2 focus:ring-node-behavior focus:border-transparent"
                   placeholder="例如：低温环境场景"
                 />
               </div>
               <div>
-                <label className="block text-xs text-gray-600 mb-1">场景描述</label>
+                <label className="block text-xs text-muted-foreground mb-1">场景描述</label>
                 <textarea
                   value={newScenario.description}
                   onChange={(e) => setNewScenario({ ...newScenario, description: e.target.value })}
-                  className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-[#007AFF] focus:border-transparent"
+                  className="w-full px-2 py-1.5 text-sm border border-border rounded focus:outline-none focus:ring-2 focus:ring-node-behavior focus:border-transparent"
                   rows={2}
                   placeholder="详细描述场景特点"
                 />
@@ -200,10 +200,10 @@ export function ContextPanel({ scenarios, onScenariosChange, knowledgeBase }: Co
               
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="block text-xs text-gray-600">参数设置</label>
+                  <label className="block text-xs text-muted-foreground">参数设置</label>
                   <button
                     onClick={addParameter}
-                    className="text-xs text-[#007AFF] hover:text-[#0051D5]"
+                    className="text-xs text-node-behavior hover:text-node-behavior/80"
                   >
                     + 添加参数
                   </button>
@@ -214,14 +214,14 @@ export function ContextPanel({ scenarios, onScenariosChange, knowledgeBase }: Co
                       type="text"
                       value={param.label}
                       onChange={(e) => updateParameter(idx, 'label', e.target.value)}
-                      className="flex-1 px-2 py-1.5 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-[#007AFF]"
+                      className="flex-1 px-2 py-1.5 text-xs border border-border rounded focus:outline-none focus:ring-1 focus:ring-node-behavior"
                       placeholder="参数名"
                     />
                     <input
                       type="text"
                       value={param.value}
                       onChange={(e) => updateParameter(idx, 'value', e.target.value)}
-                      className="flex-1 px-2 py-1.5 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-[#007AFF]"
+                      className="flex-1 px-2 py-1.5 text-xs border border-border rounded focus:outline-none focus:ring-1 focus:ring-node-behavior"
                       placeholder="参数值"
                     />
                   </div>
@@ -231,13 +231,13 @@ export function ContextPanel({ scenarios, onScenariosChange, knowledgeBase }: Co
               <div className="flex gap-2 pt-2">
                 <button
                   onClick={handleAddScenario}
-                  className="flex-1 bg-[#007AFF] hover:bg-[#0051D5] text-white px-3 py-2 rounded text-sm transition-colors"
+                  className="flex-1 bg-node-behavior hover:bg-node-behavior/80 text-white px-3 py-2 rounded text-sm transition-colors"
                 >
                   确认添加
                 </button>
                 <button
                   onClick={() => setShowAddForm(false)}
-                  className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded text-sm transition-colors"
+                  className="flex-1 bg-muted hover:bg-secondary text-foreground px-3 py-2 rounded text-sm transition-colors"
                 >
                   取消
                 </button>
@@ -253,33 +253,33 @@ export function ContextPanel({ scenarios, onScenariosChange, knowledgeBase }: Co
               key={scenario.id}
               className={`border rounded-lg p-4 transition-all relative ${
                 scenario.selected 
-                  ? 'border-[#007AFF] bg-blue-50' 
-                  : 'border-gray-200 bg-white hover:border-gray-300'
+                  ? 'border-node-behavior bg-node-behavior/10' 
+                  : 'border-border bg-card hover:border-border'
               }`}
             >
               {/* Menu Button */}
               <div className="absolute top-3 right-3">
                 <button
                   onClick={() => setOpenMenu(openMenu === scenario.id ? null : scenario.id)}
-                  className="p-1 hover:bg-gray-200 rounded transition-colors"
+                  className="p-1 hover:bg-secondary rounded transition-colors"
                 >
-                  <MoreVertical className="w-4 h-4 text-gray-500" />
+                  <MoreVertical className="w-4 h-4 text-muted-foreground" />
                 </button>
                 {openMenu === scenario.id && (
-                  <div className="absolute right-0 top-8 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-10 min-w-[120px]">
+                  <div className="absolute right-0 top-8 bg-card border border-border rounded-lg shadow-lg py-1 z-10 min-w-[120px]">
                     <button
                       onClick={() => {
                         setEditingScenario(scenario.id);
                         setOpenMenu(null);
                       }}
-                      className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                      className="w-full px-3 py-2 text-left text-sm text-foreground hover:bg-accent flex items-center gap-2"
                     >
                       <Edit2 className="w-3 h-3" />
                       编辑
                     </button>
                     <button
                       onClick={() => handleDeleteScenario(scenario.id)}
-                      className="w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                      className="w-full px-3 py-2 text-left text-sm text-destructive hover:bg-destructive/10 flex items-center gap-2"
                     >
                       <Trash2 className="w-3 h-3" />
                       删除
@@ -291,17 +291,17 @@ export function ContextPanel({ scenarios, onScenariosChange, knowledgeBase }: Co
               <div className="flex items-start justify-between mb-3 pr-8">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="text-[10px] px-2 py-0.5 rounded bg-gray-100 text-gray-600 uppercase tracking-wide">
+                    <span className="text-[10px] px-2 py-0.5 rounded bg-muted text-muted-foreground uppercase tracking-wide">
                       {scenario.type}
                     </span>
                   </div>
-                  <h4 className="text-sm text-gray-900 mb-1">{scenario.title}</h4>
-                  <p className="text-xs text-gray-600">{scenario.description}</p>
+                  <h4 className="text-sm text-foreground mb-1">{scenario.title}</h4>
+                  <p className="text-xs text-muted-foreground">{scenario.description}</p>
                 </div>
                 <button
                   onClick={() => toggleScenario(scenario.id)}
                   className={`ml-3 transition-colors ${
-                    scenario.selected ? 'text-[#007AFF]' : 'text-gray-300 hover:text-gray-400'
+                    scenario.selected ? 'text-node-behavior' : 'text-muted-foreground hover:text-muted-foreground'
                   }`}
                 >
                   <CheckCircle2 className="w-5 h-5" />
@@ -312,8 +312,8 @@ export function ContextPanel({ scenarios, onScenariosChange, knowledgeBase }: Co
               <div className="space-y-1.5">
                 {scenario.parameters.map((param, idx) => (
                   <div key={idx} className="flex items-center justify-between text-xs">
-                    <span className="text-gray-600">{param.label}</span>
-                    <span className="text-gray-900">{param.value}</span>
+                    <span className="text-muted-foreground">{param.label}</span>
+                    <span className="text-foreground">{param.value}</span>
                   </div>
                 ))}
               </div>
@@ -323,10 +323,10 @@ export function ContextPanel({ scenarios, onScenariosChange, knowledgeBase }: Co
       </div>
 
       {/* Summary */}
-      <div className="pt-4 border-t border-gray-200">
+      <div className="pt-4 border-t border-border">
         <div className="flex items-center justify-between text-sm">
-          <span className="text-gray-600">已加入验证清单</span>
-          <span className="text-[#007AFF]">
+          <span className="text-muted-foreground">已加入验证清单</span>
+          <span className="text-node-behavior">
             {scenarios.filter(s => s.selected).length} / {scenarios.length}
           </span>
         </div>

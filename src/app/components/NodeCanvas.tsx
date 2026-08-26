@@ -47,22 +47,22 @@ export function NodeCanvas({
 
   const getNodeColor = (type: string) => {
     const colors: Record<string, string> = {
-      context: '#34C759',
-      behavior: '#007AFF',
-      alignment: '#8E8E93',
-      problem: '#FF3B30',
-      solution: '#FF9500',
-      value: '#5856D6'
+      context: '#4ADE80',
+      behavior: '#60A5FA',
+      alignment: '#A1A1AA',
+      problem: '#F87171',
+      solution: '#FB923C',
+      value: '#A78BFA'
     };
-    return colors[type] || '#8E8E93';
+    return colors[type] || '#A1A1AA';
   };
 
   const getStatusBg = (status: string) => {
     switch(status) {
-      case 'validated': return 'bg-green-50 border-green-200';
-      case 'active': return 'bg-blue-50 border-[#007AFF]';
-      case 'pending': return 'bg-gray-50 border-gray-300';
-      default: return 'bg-gray-50 border-gray-300';
+      case 'validated': return 'bg-node-context/10 border-node-context/30';
+      case 'active': return 'bg-node-behavior/10 border-node-behavior/40';
+      case 'pending': return 'bg-muted border-border';
+      default: return 'bg-muted border-border';
     }
   };
 
@@ -314,6 +314,23 @@ export function NodeCanvas({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedNode]);
 
+  // 连线列表变化 / 页面加载后，对已有连线重放数据投递
+  // （保证行为节点即使方案数据是后来生成的，刷新或重进页面后也能感知"已连线"）
+  const lastDeliveredSigRef = useRef('');
+  useEffect(() => {
+    const sig = connections.map((c) => `${c.from}->${c.to}`).sort().join('|');
+    if (sig === lastDeliveredSigRef.current) return;
+    lastDeliveredSigRef.current = sig;
+    connections.forEach((conn) => {
+      const fromNode = nodes.find((n) => n.id === conn.from);
+      const toNode = nodes.find((n) => n.id === conn.to);
+      if (fromNode && toNode) {
+        notifyConnection(fromNode.id, fromNode.type, toNode.id, toNode.type);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connections, nodes, notifyConnection]);
+
   // Handle drop from node library
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
@@ -372,11 +389,11 @@ export function NodeCanvas({
         <>
           <div className="flex items-center justify-between">
             <span>场景数量</span>
-            <span className="text-gray-900">{taskStats.context.total}</span>
+            <span className="text-foreground">{taskStats.context.total}</span>
           </div>
           <div className="flex items-center justify-between">
             <span>已选中</span>
-            <span className="text-[#007AFF]">{taskStats.context.selected}</span>
+            <span className="text-node-behavior">{taskStats.context.selected}</span>
           </div>
         </>
       );
@@ -385,11 +402,11 @@ export function NodeCanvas({
         <>
           <div className="flex items-center justify-between">
             <span>测试任务</span>
-            <span className="text-gray-900">{taskStats.behavior.total}</span>
+            <span className="text-foreground">{taskStats.behavior.total}</span>
           </div>
           <div className="flex items-center justify-between">
             <span>已完成</span>
-            <span className="text-[#007AFF]">{taskStats.behavior.completed}/{taskStats.behavior.total}</span>
+            <span className="text-node-behavior">{taskStats.behavior.completed}/{taskStats.behavior.total}</span>
           </div>
         </>
       );
@@ -398,11 +415,11 @@ export function NodeCanvas({
         <>
           <div className="flex items-center justify-between">
             <span>对齐度</span>
-            <span className="text-gray-900">{taskStats.alignment.analyzed ? '已分析' : '待分析'}</span>
+            <span className="text-foreground">{taskStats.alignment.analyzed ? '已分析' : '待分析'}</span>
           </div>
           <div className="flex items-center justify-between">
             <span>偏差项</span>
-            <span className={taskStats.alignment.deviations > 0 ? 'text-[#FF9500]' : 'text-gray-400'}>
+            <span className={taskStats.alignment.deviations > 0 ? 'text-node-solution' : 'text-muted-foreground'}>
               {taskStats.alignment.analyzed ? taskStats.alignment.deviations : '--'}
             </span>
           </div>
@@ -415,7 +432,7 @@ export function NodeCanvas({
   return (
     <div 
       ref={canvasRef}
-      className="flex-1 relative bg-[#FAFAFA] overflow-hidden cursor-grab active:cursor-grabbing"
+      className="flex-1 relative bg-background overflow-hidden cursor-grab active:cursor-grabbing"
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
@@ -441,20 +458,20 @@ export function NodeCanvas({
       {leftSidebarCollapsed && (
         <button
           onClick={onExpandLeftSidebar}
-          className="absolute top-4 left-4 p-2 bg-white border border-gray-200 rounded-lg shadow-md hover:bg-gray-50 transition-colors z-10"
+          className="absolute top-4 left-4 p-2 bg-card border border-border rounded-lg shadow-md hover:bg-accent transition-colors z-10"
           title="展开左侧边栏"
         >
-          <ChevronRight className="w-4 h-4 text-gray-600" />
+          <ChevronRight className="w-4 h-4 text-muted-foreground" />
         </button>
       )}
 
       {rightSidebarCollapsed && (
         <button
           onClick={onExpandRightSidebar}
-          className="absolute top-4 right-4 p-2 bg-white border border-gray-200 rounded-lg shadow-md hover:bg-gray-50 transition-colors z-10"
+          className="absolute top-4 right-4 p-2 bg-card border border-border rounded-lg shadow-md hover:bg-accent transition-colors z-10"
           title="展开右侧边栏"
         >
-          <ChevronRight className="w-4 h-4 text-gray-600 rotate-180" />
+          <ChevronRight className="w-4 h-4 text-muted-foreground rotate-180" />
         </button>
       )}
 
@@ -479,7 +496,7 @@ export function NodeCanvas({
               refY="3"
               orient="auto"
             >
-              <polygon points="0 0, 10 3, 0 6" fill="#007AFF" />
+              <polygon points="0 0, 10 3, 0 6" fill="#60A5FA" />
             </marker>
           </defs>
           
@@ -492,11 +509,11 @@ export function NodeCanvas({
                 <path
                   key={conn.id}
                   d={getConnectionPath(fromNode, toNode)}
-                  stroke="#007AFF"
+                  stroke="#60A5FA"
                   strokeWidth="2"
                   fill="none"
                   markerEnd="url(#arrowhead)"
-                  className="pointer-events-auto cursor-pointer hover:stroke-[#FF9500] transition-colors"
+                  className="pointer-events-auto cursor-pointer hover:stroke-node-solution transition-colors"
                   onClick={() => handleConnectionClick(conn.id)}
                 />
               );
@@ -514,7 +531,7 @@ export function NodeCanvas({
               return (
                 <path
                   d={`M ${fromX} ${fromY} C ${midX} ${fromY}, ${midX} ${tempConnection.y}, ${tempConnection.x} ${tempConnection.y}`}
-                  stroke="#007AFF"
+                  stroke="#60A5FA"
                   strokeWidth="2"
                   strokeDasharray="5,5"
                   fill="none"
@@ -531,7 +548,7 @@ export function NodeCanvas({
         {/* Selection box */}
         {selectionBox && (
           <div
-            className="absolute border-2 border-[#007AFF] bg-[#007AFF]/10 pointer-events-none"
+            className="absolute border-2 border-node-behavior bg-node-behavior/10 pointer-events-none"
             style={{
               left: Math.min(selectionBox.start.x, selectionBox.end.x),
               top: Math.min(selectionBox.start.y, selectionBox.end.y),
@@ -546,7 +563,7 @@ export function NodeCanvas({
           <div
             key={node.id}
             className={`absolute cursor-move transition-shadow ${
-              selectedNode === node.id ? 'ring-2 ring-[#007AFF] shadow-lg' : 'shadow-md hover:shadow-lg'
+              selectedNode === node.id ? 'ring-2 ring-node-behavior shadow-lg' : 'shadow-md hover:shadow-lg'
             } ${selectedNodes.includes(node.id) ? 'ring-2 ring-green-500' : ''} ${getStatusBg(node.status)}`}
             style={{
               left: node.position.x,
@@ -567,7 +584,7 @@ export function NodeCanvas({
             }}
           >
             {/* Node Header */}
-            <div className="p-3 border-b border-gray-200 bg-white/50 relative">
+            <div className="p-3 border-b border-border bg-white/5 relative">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <div 
@@ -576,7 +593,7 @@ export function NodeCanvas({
                   >
                     {node.shortLabel}
                   </div>
-                  <span className="text-sm text-gray-900">{node.label}</span>
+                  <span className="text-sm text-foreground">{node.label}</span>
                 </div>
                 {node.id !== 'context' && node.id !== 'behavior' && node.id !== 'alignment' && (
                   <button
@@ -584,23 +601,23 @@ export function NodeCanvas({
                       e.stopPropagation();
                       handleDeleteNode(node.id);
                     }}
-                    className="p-1 hover:bg-red-100 rounded transition-colors"
+                    className="p-1 hover:bg-destructive/10 rounded transition-colors"
                     title="删除节点"
                   >
-                    <Trash2 className="w-3.5 h-3.5 text-red-600" />
+                    <Trash2 className="w-3.5 h-3.5 text-destructive" />
                   </button>
                 )}
               </div>
               <div className="flex items-center gap-2">
                 <div className={`text-[10px] px-2 py-0.5 rounded uppercase tracking-wide ${
-                  node.status === 'validated' ? 'bg-green-100 text-green-700' :
-                  node.status === 'active' ? 'bg-blue-100 text-[#007AFF]' :
-                  'bg-gray-100 text-gray-600'
+                  node.status === 'validated' ? 'bg-node-context/15 text-node-context' :
+                  node.status === 'active' ? 'bg-node-behavior/15 text-node-behavior' :
+                  'bg-muted text-muted-foreground'
                 }`}>
                   {getStatusLabel(node.status)}
                 </div>
                 {node.isGroup && (
-                  <div className="text-[10px] px-2 py-0.5 rounded bg-purple-100 text-purple-700">
+                  <div className="text-[10px] px-2 py-0.5 rounded bg-node-value/15 text-node-value">
                     组合节点
                   </div>
                 )}
@@ -608,11 +625,11 @@ export function NodeCanvas({
             </div>
 
             {/* Node Body */}
-            <div className="p-3 bg-white">
-              <div className="text-xs text-gray-600 space-y-1">
+            <div className="p-3 bg-transparent">
+              <div className="text-xs text-muted-foreground space-y-1">
                 {getNodeStats(node)}
                 {!['context', 'behavior', 'alignment'].includes(node.type) && (
-                  <div className="text-xs text-gray-500 italic pt-2 border-t border-gray-200">
+                  <div className="text-xs text-muted-foreground italic pt-2 border-t border-border">
                     点击查看详情配置属性
                   </div>
                 )}
@@ -640,29 +657,29 @@ export function NodeCanvas({
       <div className="absolute bottom-4 right-4 flex flex-col gap-2">
         <button
           onClick={handleZoomIn}
-          className="p-2 bg-white border border-gray-200 rounded-lg shadow-md hover:bg-gray-50 transition-colors"
+          className="p-2 bg-card border border-border rounded-lg shadow-md hover:bg-accent transition-colors"
           title="放大"
         >
-          <ZoomIn className="w-4 h-4 text-gray-600" />
+          <ZoomIn className="w-4 h-4 text-muted-foreground" />
         </button>
         <button
           onClick={handleZoomOut}
-          className="p-2 bg-white border border-gray-200 rounded-lg shadow-md hover:bg-gray-50 transition-colors"
+          className="p-2 bg-card border border-border rounded-lg shadow-md hover:bg-accent transition-colors"
           title="缩小"
         >
-          <ZoomOut className="w-4 h-4 text-gray-600" />
+          <ZoomOut className="w-4 h-4 text-muted-foreground" />
         </button>
         <button
           onClick={handleResetView}
-          className="p-2 bg-white border border-gray-200 rounded-lg shadow-md hover:bg-gray-50 transition-colors"
+          className="p-2 bg-card border border-border rounded-lg shadow-md hover:bg-accent transition-colors"
           title="重置视图"
         >
-          <Maximize2 className="w-4 h-4 text-gray-600" />
+          <Maximize2 className="w-4 h-4 text-muted-foreground" />
         </button>
       </div>
 
       {/* Canvas Info */}
-      <div className="absolute bottom-4 left-4 px-3 py-2 bg-white/90 backdrop-blur-sm rounded-lg border border-gray-200 text-xs text-gray-600">
+      <div className="absolute bottom-4 left-4 px-3 py-2 bg-card/90 backdrop-blur-sm rounded-lg border border-border text-xs text-muted-foreground">
         <div>缩放: {(zoom * 100).toFixed(0)}% · 中键平移 · Ctrl+滚轮缩放 · Shift+框选 · 拖端口连线 · 双击方案节点对比
       </div>
       </div>

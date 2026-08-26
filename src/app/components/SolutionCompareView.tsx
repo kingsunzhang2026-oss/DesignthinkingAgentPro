@@ -107,27 +107,27 @@ export function SolutionCompareView() {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#F5F5F7] text-gray-900 flex flex-col">
+    <div className="fixed inset-0 z-50 bg-background text-foreground flex flex-col">
       {/* 顶部工具栏 */}
-      <div className="h-14 flex items-center justify-between px-6 border-b border-gray-200 bg-white">
+      <div className="h-14 flex items-center justify-between px-6 border-b border-border bg-card">
         <div className="flex items-center gap-3">
-          <Box className="w-4 h-4 text-[#FF9500]" />
+          <Box className="w-4 h-4 text-node-solution" />
           <h2 className="text-sm">方案对比视图 · {compareNodeId}</h2>
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-xs text-gray-500">布局</span>
+          <span className="text-xs text-muted-foreground">布局</span>
           {LAYOUTS.map((l) => (
             <button
               key={l.n}
               onClick={() => setLayoutN(l.n)}
               className={`px-2.5 py-1 rounded text-xs border ${
-                layoutN === l.n ? 'border-[#FF9500] bg-[#FF9500] text-white' : 'border-gray-200 text-gray-600 hover:border-gray-400'
+                layoutN === l.n ? 'border-node-solution bg-node-solution text-white' : 'border-border text-muted-foreground hover:border-border'
               }`}
             >
               {l.label}
             </button>
           ))}
-          <button onClick={closeCompare} className="p-1.5 rounded hover:bg-gray-100" title="关闭">
+          <button onClick={closeCompare} className="p-1.5 rounded hover:bg-accent" title="关闭">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -136,28 +136,28 @@ export function SolutionCompareView() {
       {/* 模型网格 */}
       <div className="flex-1 overflow-auto p-6">
         {loading ? (
-          <div className="h-full flex items-center justify-center text-gray-400 text-sm">加载模型中…</div>
+          <div className="h-full flex items-center justify-center text-muted-foreground text-sm">加载模型中…</div>
         ) : (
           <div
             className="grid gap-4 h-full"
             style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
           >
             {/* 首格：基准产品模型 */}
-            <div className="relative rounded-xl border border-dashed border-gray-300 bg-white flex flex-col items-center justify-center overflow-hidden">
-              <span className="absolute top-2 left-3 text-[10px] px-2 py-0.5 rounded bg-[#5856D6] text-white">基准</span>
+            <div className="relative rounded-xl border border-dashed border-border bg-card flex flex-col items-center justify-center overflow-hidden">
+              <span className="absolute top-2 left-3 text-[10px] px-2 py-0.5 rounded bg-[#A78BFA] text-white">基准</span>
               {baseline?.storage_url ? (
                 <>
                   <ModelViewer src={baseline.storage_url} alt="基准模型" height={260} />
-                  <div className="absolute bottom-2 left-3 right-3 flex items-center justify-between text-[11px] text-gray-500">
+                  <div className="absolute bottom-2 left-3 right-3 flex items-center justify-between text-[11px] text-muted-foreground">
                     <span className="truncate">{baseline.name}</span>
                     <div className="flex gap-2">
-                      <a href={baseline.storage_url} target="_blank" rel="noreferrer" download className="hover:text-gray-700"><Download className="w-3.5 h-3.5" /></a>
-                      <button onClick={() => handleRemove(baseline)} className="hover:text-red-500"><X className="w-3.5 h-3.5" /></button>
+                      <a href={baseline.storage_url} target="_blank" rel="noreferrer" download className="hover:text-foreground"><Download className="w-3.5 h-3.5" /></a>
+                      <button onClick={() => handleRemove(baseline)} className="hover:text-destructive"><X className="w-3.5 h-3.5" /></button>
                     </div>
                   </div>
                 </>
               ) : (
-                <label className="cursor-pointer flex flex-col items-center gap-2 text-gray-400 hover:text-gray-600">
+                <label className="cursor-pointer flex flex-col items-center gap-2 text-muted-foreground hover:text-muted-foreground">
                   <input ref={baseInputRef} type="file" accept=".glb,.gltf" className="hidden" onChange={(e) => handleBaselineUpload(e.target.files)} />
                   <Upload className="w-7 h-7" />
                   <span className="text-xs">上传基准产品模型（GLB）</span>
@@ -174,26 +174,26 @@ export function SolutionCompareView() {
                 onDragOver={(e) => { e.preventDefault(); setOverIdx(i); }}
                 onDrop={(e) => { e.preventDefault(); if (dragIdx !== null) reorder(dragIdx, i); setDragIdx(null); setOverIdx(null); }}
                 onDragEnd={() => { setDragIdx(null); setOverIdx(null); }}
-                className={`relative rounded-xl border bg-white flex flex-col items-center justify-center overflow-hidden transition-colors ${
-                  overIdx === i && dragIdx !== null ? 'border-[#FF9500]' : 'border-gray-200'
+                className={`relative rounded-xl border bg-card flex flex-col items-center justify-center overflow-hidden transition-colors ${
+                  overIdx === i && dragIdx !== null ? 'border-node-solution' : 'border-border'
                 }`}
               >
                 {asset ? (
                   <>
-                    <span className="absolute top-2 left-3 flex items-center gap-1 text-[10px] px-2 py-0.5 rounded bg-[#FF9500] text-white">
+                    <span className="absolute top-2 left-3 flex items-center gap-1 text-[10px] px-2 py-0.5 rounded bg-node-solution text-white">
                       <GripVertical className="w-3 h-3 cursor-grab" /> 方案 {i + 1}
                     </span>
                     <ModelViewer src={asset.storage_url || ''} alt={asset.name} height={260} />
-                    <div className="absolute bottom-2 left-3 right-3 flex items-center justify-between text-[11px] text-gray-500">
+                    <div className="absolute bottom-2 left-3 right-3 flex items-center justify-between text-[11px] text-muted-foreground">
                       <span className="truncate">{asset.name}</span>
                       <div className="flex gap-2">
-                        <a href={asset.storage_url || ''} target="_blank" rel="noreferrer" download className="hover:text-gray-700"><Download className="w-3.5 h-3.5" /></a>
-                        <button onClick={() => handleRemove(asset)} className="hover:text-red-500"><X className="w-3.5 h-3.5" /></button>
+                        <a href={asset.storage_url || ''} target="_blank" rel="noreferrer" download className="hover:text-foreground"><Download className="w-3.5 h-3.5" /></a>
+                        <button onClick={() => handleRemove(asset)} className="hover:text-destructive"><X className="w-3.5 h-3.5" /></button>
                       </div>
                     </div>
                   </>
                 ) : (
-                  <div className="text-gray-400 text-xs flex flex-col items-center gap-1">
+                  <div className="text-muted-foreground text-xs flex flex-col items-center gap-1">
                     <RotateCcw className="w-5 h-5" />
                     空位（生成更多方案或拖入模型）
                   </div>
@@ -205,7 +205,7 @@ export function SolutionCompareView() {
       </div>
 
       {/* 底部提示 */}
-      <div className="h-9 flex items-center px-6 border-t border-gray-200 bg-white text-[11px] text-gray-500">
+      <div className="h-9 flex items-center px-6 border-t border-border bg-card text-[11px] text-muted-foreground">
         首格为基准产品模型（可上传 GLB）；其余格为方案节点生成的模型，可拖拽重排对比。
       </div>
     </div>
