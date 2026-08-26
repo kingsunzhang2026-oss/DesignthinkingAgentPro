@@ -173,19 +173,24 @@ export function BehaviorPanel({
     const fromNodeId = delivery.fromNodeId;
     const timer = setInterval(() => {
       const out = getOutput(fromNodeId);
-      if (out && Array.isArray(out.variants) && out.variants.length > 0) {
-        setSyncedVariants((prev) => {
-          const sig = (arr: any[]) => arr.map((v: any) => `${v.id}|${v.label}|${v.assetId || ''}|${(v.previewUrl || '').slice(0, 80)}`).join('\n');
-          return sig(out.variants) === sig(prev || []) ? prev : out.variants;
-        });
+      const list = out && Array.isArray(out.variants) ? out.variants : [];
+      if (list.length === 0) {
+        // 方案节点输出为空（新节点/未生成）：清空实时值，避免残留旧节点方案
+        setSyncedVariants((prev) => (prev ? null : prev));
+        return;
       }
+      setSyncedVariants((prev) => {
+        const sig = (arr: any[]) => arr.map((v: any) => `${v.id}|${v.label}|${v.assetId || ''}|${(v.previewUrl || '').slice(0, 80)}`).join('\n');
+        return sig(list) === sig(prev || []) ? prev : list;
+      });
     }, 1500);
     return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [delivery?.fromNodeId]);
   const deliveredVariants: Array<{ id?: string; label: string; prompt?: string; previewUrl?: string; assetId?: string }> | undefined = delivery?.data?.variants;
+  // 优先使用实时同步值（轮询 getOutput，含连线后添加/重新生成的方案），连线快照仅兜底
   const idVariants = idMode
-    ? (deliveredVariants && deliveredVariants.length > 0 ? deliveredVariants : syncedVariants) ?? null
+    ? (syncedVariants && syncedVariants.length > 0 ? syncedVariants : (deliveredVariants && deliveredVariants.length > 0 ? deliveredVariants : null)) ?? null
     : null;
   // 实际用于渲染的 variants：无真实方案时兜底 1 个默认方案，保证行为节点始终有 tab
   const effectiveVariants = useMemo(() => {

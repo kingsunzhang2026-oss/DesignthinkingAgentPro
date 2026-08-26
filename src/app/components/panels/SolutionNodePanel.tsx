@@ -96,7 +96,6 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
   const [variantCount, setVariantCount] = useState<number>(1);
   const [strategy, setStrategy] = useState<'concurrent' | 'sequential'>('concurrent');
   const [variants, setVariants] = useState<VariantDef[]>([]);
-  const [generatingAll, setGeneratingAll] = useState(false);
   const [deliveryBanner, setDeliveryBanner] = useState<string | null>(null);
 
   const [assets, setAssets] = useState<PrototypeAsset[]>([]);
@@ -210,8 +209,9 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
       }
       return v;
     }));
+    // 依赖 variants.length：存档恢复先于资产加载时（或反之），都能在双方就绪后回填 previewUrl
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [assets]);
+  }, [assets, variants.length]);
 
   // 模式切换：清理图片预览与 objectURL，避免旧图残留到下次生成
   useEffect(() => {
@@ -225,6 +225,18 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [genMode]);
+
+  // 移除单个方案卡片（仅解除卡片，不删除已生成/上传的资产）
+  const handleRemoveVariant = (vid: string) => {
+    if (variants.length <= 1) return;
+    if (!confirm('确认移除该方案卡片？（仅移除卡片，已生成的模型资产仍保留在原型资产中）')) return;
+    const next = variants.filter((v) => v.id !== vid);
+    setVariants(next);
+    setVariantCount(next.length);
+    registerOutput(nodeId, 'solution', {
+      variants: next.map((v) => ({ id: v.id, label: v.label, prompt: v.prompt, previewUrl: v.previewUrl, assetId: v.assetId })),
+    });
+  };
 
   const loadAssets = async () => {
     setLoadingAssets(true);
@@ -243,7 +255,7 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
       basePrompt,
       genMode,
       tier,
-      variantCount,
+      variantCount: variants.length || 1,
       strategy,
       variants: variants.map((v) => ({ id: v.id, label: v.label, prompt: v.prompt, assetId: v.assetId })),
     });
@@ -259,10 +271,10 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
       variants: next.map((v) => ({ id: v.id, label: v.label, prompt: v.prompt, previewUrl: v.previewUrl, assetId: v.assetId })),
     });
     save({
-      basePrompt, genMode, tier, variantCount, strategy,
+      basePrompt, genMode, tier, variantCount: variants.length || 1, strategy,
       variants: next.map((v) => ({ id: v.id, label: v.label, prompt: v.prompt, assetId: v.assetId })),
     }).catch(() => {});
-  }, [nodeId, getOutput, registerOutput, variants, basePrompt, genMode, tier, variantCount, strategy, save]);
+  }, [nodeId, getOutput, registerOutput, variants, basePrompt, genMode, tier, strategy, save]);
 
   const generateVariant = async (variantId: string) => {
     // 同步锁：防止 React setState 异步期间重复进入（连点生成）
@@ -326,32 +338,6 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
       setGenStatusText('生成失败');
     } finally {
       inFlightRef.current.delete(variantId);
-    }
-  };
-
-  // ---------- 生成全部（并发 / 顺序）----------
-  const generateAll = async () => {
-    // 同步锁：防连点生成全部
-    if (inFlightRef.current.has('__all__')) return;
-    if (generatingAll) return;
-    if (variants.length === 0) {
-      setGenError('请先在上方选择方案数量（1 / 3 / 5 个）生成方案卡片，再点击「生成全部方案」');
-      return;
-    }
-    inFlightRef.current.add('__all__');
-    setGeneratingAll(true);
-    try {
-      if (strategy === 'concurrent') {
-        await Promise.all(variants.map((v) => generateVariant(v.id)));
-      } else {
-        for (const v of variants) {
-          // eslint-disable-next-line no-await-in-loop
-          await generateVariant(v.id);
-        }
-      }
-    } finally {
-      setGeneratingAll(false);
-      inFlightRef.current.delete('__all__');
     }
   };
 
@@ -490,23 +476,10 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
           </div>
 
           {/* 复合方案数量 */}
-          <div className="flex items-center gap-3 mb-3">
-            <span className="text-xs text-muted-foreground">方案数量：</span>
-            {[1, 3, 5].map((n) => (
-              <button
-                key={n}
-                onClick={() => {
-                  setVariantCount(n);
-                  setVariants((prev) => reconcileVariants(n, basePrompt, prev));
-                }}
-                className={`px-3 py-1 rounded text-xs border ${
-                  variantCount === n ? 'border-node-solution bg-node-solution text-white' : 'border-border bg-card text-muted-foreground hover:border-node-solution'
-                }`}
-              >
-                {n} 个
-              </button>
-            ))}
-            <span className="text-xs text-muted-foreground">（每个为一独立子智能体）</span>
+          {/* 提示：逐个生成，可随时添加方案 */}
+          <div className="flex items-center gap-2 mb-3 text-[11px] text-muted-foreground bg-card border border-border rounded px-3 py-2">
+            <Sparkles className="w-3.5 h-3.5 text-node-solution flex-shrink-0" />
+            方案逐个生成：每个方案独立卡片独立提示词，可随时「+ 添加方案」继续生成，或对已完成方案点「重新生成」覆盖。
           </div>
 
           {/* 模式切换 */}
@@ -586,11 +559,20 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
                   </div>
                   <button
                     onClick={() => generateVariant(v.id)}
-                    disabled={v.status === 'generating' || generatingAll}
+                    disabled={v.status === 'generating'}
                     className="text-xs px-2.5 py-1 rounded bg-node-solution text-white hover:bg-node-solution/80 disabled:opacity-50"
                   >
                     {v.status === 'generating' ? '生成中…' : v.status === 'done' ? '重新生成' : '生成'}
                   </button>
+                  {variants.length > 1 && (
+                    <button
+                      onClick={() => handleRemoveVariant(v.id)}
+                      className="p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded"
+                      title="移除该方案卡片（不删除已生成资产）"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
                 {genMode === 'text_to_model' && (
                   <textarea
@@ -620,25 +602,6 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
             )}
           </div>
 
-          {/* 生成全部 + 对比 */}
-          <div className="mt-3 flex items-center gap-2">
-            <button
-              onClick={generateAll}
-              disabled={generatingAll}
-              className="flex-1 bg-node-solution hover:bg-node-solution/80 disabled:opacity-50 text-white px-3 py-2 rounded text-sm flex items-center justify-center gap-2"
-            >
-              {generatingAll ? <Loader2 className="w-4 h-4 animate-spin" /> : <Layers className="w-4 h-4" />}
-              {generatingAll ? '生成中…' : '生成全部方案'}
-            </button>
-            <button
-              onClick={() => openCompare(nodeId)}
-              title="全屏对比多个模型"
-              className="px-3 py-2 rounded text-sm border border-node-solution text-node-solution hover:bg-node-solution/10 flex items-center gap-1"
-            >
-              <Maximize2 className="w-4 h-4" /> 对比
-            </button>
-          </div>
-
           {genStatusText && (
             <p className="mt-2 text-xs text-muted-foreground">{genStatusText}</p>
           )}
@@ -659,15 +622,26 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
             <h4 className="text-sm text-foreground flex items-center gap-2">
               <Box className="w-4 h-4 text-node-solution" /> 3D 模型预览
             </h4>
-            {previewUrl && (
-              <button
-                onClick={() => { setPreviewUrl(null); setPreviewName(''); }}
-                className="flex items-center gap-1 px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground border border-border rounded hover:bg-accent"
-                title="关闭预览窗口"
-              >
-                <X className="w-3.5 h-3.5" /> 关闭
-              </button>
-            )}
+            <div className="flex items-center gap-2">
+              {variants.filter((v) => v.status === 'done').length >= 2 && (
+                <button
+                  onClick={() => openCompare(nodeId)}
+                  className="flex items-center gap-1 px-2 py-0.5 text-xs text-node-solution border border-node-solution/30 rounded hover:bg-node-solution/10"
+                  title="同时打开多个已完成方案，全屏对比"
+                >
+                  <Maximize2 className="w-3.5 h-3.5" /> 对比 {variants.filter((v) => v.status === 'done').length} 个方案
+                </button>
+              )}
+              {previewUrl && (
+                <button
+                  onClick={() => { setPreviewUrl(null); setPreviewName(''); }}
+                  className="flex items-center gap-1 px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground border border-border rounded hover:bg-accent"
+                  title="关闭预览窗口"
+                >
+                  <X className="w-3.5 h-3.5" /> 关闭
+                </button>
+              )}
+            </div>
           </div>
           {previewUrl ? (
             <div>
