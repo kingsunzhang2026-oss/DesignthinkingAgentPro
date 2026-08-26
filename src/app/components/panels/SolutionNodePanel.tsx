@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Upload, X, File, Box, Image as ImageIcon, Loader2, Sparkles, Trash2,
-  Download, Eye, AlertCircle, Layers, Maximize2, Mic, Square, Save,
+  Download, Eye, AlertCircle, Layers, Maximize2, Mic, Square, Save, Plus,
 } from 'lucide-react';
 import { ModelViewer } from '../ModelViewer';
 import {
@@ -109,6 +109,16 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
   const [multiview, setMultiview] = useState<Record<string, File | null>>({ front: null, back: null, left: null, right: null });
   const [multiviewPreviews, setMultiviewPreviews] = useState<Record<string, string>>({});
 
+  // 防止连续点击重复生成：同步锁（在 setState 异步生效前也能挡住二次进入）
+  const inFlightRef = useRef<Set<string>>(new Set());
+  // Tripo progress 统一展示：≤1 当比例，>1 直接当百分数
+  const fmtProgress = (p: number | null | undefined): string => {
+    if (p == null || Number.isNaN(p)) return '';
+    const v = p <= 1 ? Math.round(p * 100) : Math.round(p);
+    const clamped = Math.max(0, Math.min(100, v));
+    return ` ${clamped}%`;
+  };
+
   const [uploading, setUploading] = useState(false);
   const [genStatusText, setGenStatusText] = useState('');
   const [genError, setGenError] = useState<string>('');
@@ -203,6 +213,19 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assets]);
 
+  // 模式切换：清理图片预览与 objectURL，避免旧图残留到下次生成
+  useEffect(() => {
+    setSingleImage(null);
+    if (singlePreview) URL.revokeObjectURL(singlePreview);
+    setSinglePreview('');
+    setMultiview({ front: null, back: null, left: null, right: null });
+    setMultiviewPreviews((prev) => {
+      Object.values(prev).forEach((u) => { if (u) URL.revokeObjectURL(u); });
+      return { front: '', back: '', left: '', right: '' };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [genMode]);
+
   const loadAssets = async () => {
     setLoadingAssets(true);
     try {
@@ -242,8 +265,11 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
   }, [nodeId, getOutput, registerOutput, variants, basePrompt, genMode, tier, variantCount, strategy, save]);
 
   const generateVariant = async (variantId: string) => {
+    // 同步锁：防止 React setState 异步期间重复进入（连点生成）
+    if (inFlightRef.current.has(variantId)) return;
+    inFlightRef.current.add(variantId);
     const v = variants.find((x) => x.id === variantId);
-    if (!v) return;
+    if (!v) { inFlightRef.current.delete(variantId); return; }
     setVariants((prev) => prev.map((x) => x.id === variantId ? { ...x, status: 'generating', error: undefined } : x));
     publishVariants(variantId, { status: 'generating', error: undefined });
     setGenError('');
@@ -264,7 +290,7 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
       const taskId = await generateModel({ mode: genMode, tier, prompt: v.prompt.trim() || undefined, imageUrls });
       setGenStatusText(`方案 ${v.label}：Tripo 生成中…`);
       const remoteModelUrl = await pollUntilDone(taskId, (s: TaskStatus) => {
-        setGenStatusText(`方案 ${v.label}：${statusText(s.status)}` + (s.progress != null ? ` ${Math.round(s.progress * 100)}%` : ''));
+        setGenStatusText(`方案 ${v.label}：${statusText(s.status)}${fmtProgress(s.progress)}`);
       });
 
       setGenStatusText(`方案 ${v.label}：模型完成，正在转存…`);
@@ -298,16 +324,21 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
       publishVariants(variantId, { status: 'error', error: errMsg });
       setGenError(`方案 ${v.label}：${errMsg}`);
       setGenStatusText('生成失败');
+    } finally {
+      inFlightRef.current.delete(variantId);
     }
   };
 
   // ---------- 生成全部（并发 / 顺序）----------
   const generateAll = async () => {
+    // 同步锁：防连点生成全部
+    if (inFlightRef.current.has('__all__')) return;
     if (generatingAll) return;
     if (variants.length === 0) {
       setGenError('请先在上方选择方案数量（1 / 3 / 5 个）生成方案卡片，再点击「生成全部方案」');
       return;
     }
+    inFlightRef.current.add('__all__');
     setGeneratingAll(true);
     try {
       if (strategy === 'concurrent') {
@@ -320,6 +351,7 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
       }
     } finally {
       setGeneratingAll(false);
+      inFlightRef.current.delete('__all__');
     }
   };
 
@@ -557,7 +589,7 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
                     disabled={v.status === 'generating' || generatingAll}
                     className="text-xs px-2.5 py-1 rounded bg-node-solution text-white hover:bg-node-solution/80 disabled:opacity-50"
                   >
-                    生成
+                    {v.status === 'generating' ? '生成中…' : v.status === 'done' ? '重新生成' : '生成'}
                   </button>
                 </div>
                 {genMode === 'text_to_model' && (
@@ -572,6 +604,20 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
                 {v.error && <p className="mt-1 text-[10px] text-destructive">{v.error}</p>}
               </div>
             ))}
+            {/* 追加方案：单方案模式也能扩展为多方案；上限 5 个 */}
+            {variants.length < VARIANT_LABELS.length && (
+              <button
+                onClick={() => {
+                  const next = variants.length + 1;
+                  setVariantCount(next);
+                  setVariants((prev) => reconcileVariants(next, basePrompt, prev));
+                }}
+                className="w-full border border-dashed border-border rounded-lg py-2 text-xs text-muted-foreground hover:border-node-solution hover:text-node-solution flex items-center justify-center gap-1"
+                title="随时追加一个新方案（如已生成 A，再加 B）"
+              >
+                <Plus className="w-3.5 h-3.5" /> 添加方案（共 {variants.length + 1} / {VARIANT_LABELS.length}）
+              </button>
+            )}
           </div>
 
           {/* 生成全部 + 对比 */}
