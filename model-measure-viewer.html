@@ -1,0 +1,1239 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>三维模型尺寸测量与标注工具（STL / GLB / OBJ）</title>
+<style>
+  /* ===== 基础 ===== */
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden;
+    font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    background: #1a1d23; color: #e6e9ef; }
+  #app { display: flex; flex-direction: column; height: 100%; }
+  #main { display: flex; flex: 1 1 auto; min-height: 0; overflow: hidden; }
+
+  /* 左侧：3D 视口（canvas 绝对定位不参与布局，杜绝"内容撑高"反馈膨胀） */
+  #scene { position: relative; flex: 1 1 auto; min-width: 0; overflow: hidden; }
+  #scene > div { pointer-events: none; }   /* CSS2D 标签层不拦截鼠标 */
+  #scene canvas { position: absolute; inset: 0; }
+  #btnFull { position: absolute; top: 10px; right: 10px; z-index: 10; opacity: .85; }
+
+  /* 中缝拖动手柄：向左拖 = 面板加宽 */
+  #dragbar { flex: 0 0 6px; cursor: col-resize; background: #232830;
+    border-left: 1px solid #2c313a; border-right: 1px solid #2c313a; }
+  #dragbar:hover { background: #2f6df6; }
+
+  /* 右侧：控制栏（宽度可拖拽调整） */
+  #sidebar {
+    flex: 0 0 280px; min-width: 0; overflow-y: auto;
+    background: #1f242c; border-left: 1px solid #2c313a;
+    padding: 12px; display: flex; flex-direction: column; gap: 12px;
+  }
+
+  /* 底部日志条：固定高度，内部滚动（绝对定位，内容再长也不撑高窗口） */
+  #logbar { position: relative; flex: 0 0 96px; border-top: 1px solid #2c313a;
+    background: #1a1d23; padding: 4px 10px 6px; overflow: hidden; }
+  #logbar > b { font-size: 11px; color: #9aa3b2; }
+  #statusLog { position: absolute; top: 20px; left: 10px; right: 10px; bottom: 6px;
+    overflow-y: auto; font-size: 11px; color: #8b94a4; white-space: pre-wrap; }
+
+  /* 基础设定（标定）对话框 */
+  dialog { background: #232830; color: #e6e9ef; border: 1px solid #3b4350;
+    border-radius: 10px; padding: 14px 16px; min-width: 340px; }
+  dialog::backdrop { background: rgba(0,0,0,.55); }
+  dialog h4 { margin: 0 0 8px; font-size: 14px; color: #7fb0ff; }
+  dialog .row { margin: 8px 0; }
+  dialog input[type="number"] { width: 80px; }
+  .card { background: #232830; border: 1px solid #2c313a; border-radius: 10px; padding: 10px 12px; }
+  .card > h3 { margin: 0 0 8px; font-size: 13px; display: flex; align-items: center; gap: 6px;
+    padding-bottom: 7px; border-bottom: 1px solid #2c313a; }
+  .card.measure > h3 { color: #7fb0ff; }
+  .card.refer  > h3 { color: #36d39a; }
+  /* 卡片可折叠：点头部切换 */
+  .card > h3 { cursor: pointer; user-select: none; }
+  .card > h3 .arr { margin-left: auto; font-size: 11px; color: #8b94a4; }
+  .card.collapsed > h3 { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+  .card.collapsed .card-body { display: none; }
+  /* 两张卡都折叠时：侧栏缩成细条，模型展示最大化 */
+  #sidebar.rail { flex-basis: 48px; padding: 10px 5px; gap: 8px; }
+  #sidebar.rail .card { padding: 12px 0; }
+  #sidebar.rail .card > h3 {
+    writing-mode: vertical-rl; letter-spacing: 3px; justify-content: center;
+    border-bottom: none; margin: 0; padding: 0;
+  }
+  #sidebar.rail .card > h3 .arr { display: none; }
+  .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 7px 0; }
+  .row > label { font-size: 12px; color: #9aa3b2; }
+  .hintline { font-size: 11px; line-height: 1.5; color: #8b94a4; margin: 4px 0 0; }
+  button, select, input[type="number"] {
+    background: #2f3640; color: #e6e9ef; border: 1px solid #3b4350;
+    border-radius: 6px; padding: 6px 10px; font-size: 13px; cursor: pointer;
+  }
+  button:hover { background: #3a4250; }
+  button.active { background: #2f6df6; border-color: #2f6df6; color: #fff; }
+  button.danger { background: #5a2330; border-color: #7a2f3f; }
+  button.danger:hover { background: #7a2f3f; }
+  input[type="file"] { font-size: 12px; max-width: 190px; }
+  input[type="number"] { width: 72px; cursor: text; }
+  #fitReport {
+    margin-top: 6px; width: 100%; height: 150px; resize: vertical;
+    font-size: 12px; line-height: 1.6; color: #cfd6e2; white-space: pre-wrap;
+    background: #1a1d23; border: 1px solid #2c313a; border-radius: 8px;
+    padding: 8px 10px; overflow: auto;
+  }
+  /* 标注标签 */
+  .anno-label { background: rgba(47,109,246,.92); color: #fff;
+    padding: 2px 7px; border-radius: 5px; font-size: 12px; white-space: nowrap;
+    box-shadow: 0 1px 4px rgba(0,0,0,.4); }
+  .anno-label.sel { background: #e0533d; }
+</style>
+
+<!-- Three.js r160 通过 importmap 从 CDN 引入 -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<div id="app">
+  <div id="main">
+  <!-- 视口：永远干净，不被任何面板遮挡 -->
+  <div id="scene"><button id="btnFull" title="全屏 / 退出全屏">⛶ 全屏</button></div>
+  <div id="dragbar" title="左右拖动：调整面板宽度"></div>
+
+  <!-- 右侧控制栏：两张独立卡片 -->
+  <div id="sidebar">
+    <!-- 卡片一：尺寸测量（与参考卡在布局上分离） -->
+    <div class="card measure">
+      <h3 id="hdrMeasure">📏 尺寸测量 <span class="arr">▾</span></h3>
+      <div class="card-body">
+      <div class="row">
+        <button id="btnMeasure">测量模式：关</button>
+        <button id="btnBasic">基础设定</button>
+        <button id="btnArchive">📂 存档</button>
+      </div>
+      <div class="row">
+        <label>单位</label>
+        <select id="unitSel">
+          <option value="mm">毫米 mm</option>
+          <option value="cm">厘米 cm</option>
+          <option value="inch">英寸 in</option>
+          <option value="m">米 m</option>
+        </select>
+      </div>
+      <div class="row">
+        <label>吸附</label>
+        <select id="snapSel">
+          <option value="none">关闭</option>
+          <option value="vertex" selected>顶点</option>
+          <option value="edge">边</option>
+        </select>
+        <label>阈值</label>
+        <input type="number" id="snapThr" value="0.5" min="0.001" step="0.05" title="吸附半径（模型单位）；加载模型后自动按对角线1%设置，可手调" />
+      </div>
+      <div class="row">
+        <label>视图</label>
+        <select id="viewSel">
+          <option value="front">前</option>
+          <option value="side">侧</option>
+          <option value="top">顶</option>
+        </select>
+      </div>
+      <div class="row">
+        <button id="btnDel">删除选中</button>
+        <button id="btnClear">清空标注</button>
+        <button id="btnExport">导出JSON</button>
+      </div>
+      <p class="hintline">开「测量模式」后短点两点生成标注（绿=吸附，黄=自由点）；两点之间可拖拽旋转/切换视图；Esc=取消当前拾取；按住 Alt=临时关闭吸附、从任意点自由拾取（吸附下拉选「关闭」则全程自由）。标定在「基础设定」。</p>
+      </div>
+    </div>
+
+    <!-- 卡片二：设置（加载文件/示例 + 工效参考智能体，默认收起） -->
+    <div class="card refer collapsed">
+      <h3 id="hdrRefer">⚙ 设置（加载 / 工效参考） <span class="arr">▸</span></h3>
+      <div class="card-body">
+      <div class="row">
+        <input type="file" id="fileInput" accept=".stl,.glb,.gltf,.obj,.stp,.step" />
+        <button id="btnSample">加载示例</button>
+      </div>
+      <div class="row">
+        <label>百分位档</label>
+        <select id="refPct">
+          <option value="p5">5th（小手）</option>
+          <option value="p50" selected>50th（中位）</option>
+          <option value="p95">95th（大手）</option>
+        </select>
+      </div>
+      <div style="font-size:11px;color:#7a8494;margin:2px 0 4px;">人体测量值（mm，切换档后可手动覆盖）</div>
+      <div class="row">
+        <label>掌宽</label>
+        <input type="number" id="aPalm" value="84" min="10" step="0.5" />
+        <label>mm</label>
+      </div>
+      <div class="row">
+        <label>食指宽</label>
+        <input type="number" id="aIndexB" value="18" min="5" step="0.5" />
+        <label>mm</label>
+      </div>
+      <div class="row">
+        <label>食指长</label>
+        <input type="number" id="aIndexL" value="70" min="20" step="0.5" />
+        <label>mm</label>
+      </div>
+      <div class="row">
+        <label>握柄直径</label>
+        <input type="number" id="devHandle" value="32" min="1" step="0.5" />
+        <label>mm</label>
+      </div>
+      <div class="row">
+        <label title="定义：从指环内手指定位点（工程近似：食指近端指间关节 PIP / 近节指骨中部腹面）到激发键按钮中心的直线距离；指尖只是最大可及界限，不作起点">激发键距离 ⓘ</label>
+        <input type="number" id="devTrigger" value="70" min="1" step="0.5" />
+        <label>mm</label>
+      </div>
+      <div class="row">
+        <label>指环内径</label>
+        <input type="number" id="devRing" value="22" min="1" step="0.5" />
+        <label>mm</label>
+      </div>
+      <div style="font-size:11px;color:#7a8494;margin:-2px 0 6px;">激发键距离：起点 = 指环内手指定位点（近似食指近端指间关节 PIP / 近节指骨中部腹面），终点 = 激发键按钮中心；指尖仅是最大可及界限。可按实测修改。</div>
+      <label style="font-size:12px;color:#9aa3b2;">适配结论与工效建议</label>
+      <div id="fitReport">（调整参数或百分位档后自动生成）</div>
+      </div>
+    </div>
+  </div>
+  </div>
+
+  <!-- 底部日志条：测量 + 工效操作统一记录 -->
+  <div id="logbar"><b>日志</b><div id="statusLog"></div></div>
+</div>
+
+<!-- 基础设定（真实尺寸标定）对话框 -->
+<dialog id="calibDlg">
+  <h4>基础设定 · 真实尺寸标定</h4>
+  <p id="calibStatus" class="hintline">未标定</p>
+  <p class="hintline">模型包围盒（模型单位）：<span id="bboxInfo">-</span></p>
+  <div class="row">
+    <label id="lblX">长 X</label><input type="number" id="realX" min="0" step="0.1" />
+    <label id="lblZ">宽 Z</label><input type="number" id="realZ" min="0" step="0.1" />
+    <label id="lblY">高 Y</label><input type="number" id="realY" min="0" step="0.1" />
+    <label id="calibUnitLabel">mm</label>
+  </div>
+  <p class="hintline">填一个最有把握的方向（多项时以第一项为准）→ 「按尺寸标定」（比例=真实值÷包围盒对应边）。「两点标定」= 点选模型上两个已知真实距离的点。「取消标定」恢复原始比例。</p>
+  <div class="row">
+    <button id="btnCalibDims">按尺寸标定</button>
+    <button id="btnCalib2pt">两点标定</button>
+    <button id="btnCalibCancel" class="danger">取消标定</button>
+    <button id="btnCalibClose">关闭</button>
+  </div>
+</dialog>
+
+<!-- 打开存档（Supabase prototype-assets 桶） -->
+<dialog id="archiveDlg">
+  <h4>📂 打开存档模型（prototype-assets）</h4>
+  <div id="archiveList" style="min-width:420px;max-height:340px;overflow-y:auto;"></div>
+  <div class="row" style="margin-top:10px;">
+    <button id="btnArchiveRefresh">刷新</button>
+    <button id="btnArchiveClose">关闭</button>
+  </div>
+</dialog>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { STLLoader } from 'three/addons/loaders/STLLoader.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+
+/* =========================================================================
+ * 一、常量与全局状态
+ * ========================================================================= */
+const UNIT_TO_METER = { mm: 0.001, cm: 0.01, inch: 0.0254, m: 1 };
+const UNIT_NAME = { mm: 'mm', cm: 'cm', inch: 'in', m: 'm' };
+
+let scene, camera, renderer, labelRenderer, controls, raycaster;
+let snapMarker = null;          // 吸附位置高亮标记（绿=已吸附，黄=自由表面点）
+let modelGroup = null;
+let modelSize = 1;
+let currentUnit = 'mm';
+
+let calibFactor = null;
+let calibUnit = null;
+
+let measurementMode = false;
+let snapMode = 'vertex';
+let snapThreshold = 0.5;
+let pendingPoint = null;
+let selectedAnnotation = null;
+const annotations = [];
+let calibState = null;
+
+const logLines = [];
+function log(msg) {
+  const t = new Date().toLocaleTimeString();
+  logLines.push(`[${t}] ${msg}`);
+  const el = document.getElementById('statusLog');
+  if (el) el.textContent = logLines.join('\n');
+}
+
+/* =========================================================================
+ * 二、场景初始化
+ * ========================================================================= */
+function init() {
+  const container = document.getElementById('scene');
+
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x1a1d23);
+
+  camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.01, 100000);
+  camera.position.set(80, 60, 80);
+
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setSize(container.clientWidth, container.clientHeight);
+  container.appendChild(renderer.domElement);
+
+  labelRenderer = new CSS2DRenderer();
+  labelRenderer.setSize(container.clientWidth, container.clientHeight);
+  labelRenderer.domElement.style.position = 'absolute';
+  labelRenderer.domElement.style.top = '0';
+  labelRenderer.domElement.style.left = '0';
+  container.appendChild(labelRenderer.domElement);
+
+  controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+  const d1 = new THREE.DirectionalLight(0xffffff, 0.8); d1.position.set(1, 1, 1);
+  const d2 = new THREE.DirectionalLight(0xffffff, 0.4); d2.position.set(-1, -0.5, -1);
+  scene.add(d1, d2);
+
+  const grid = new THREE.GridHelper(200, 20, 0x33405a, 0x262c36);
+  grid.position.y = -40;
+  scene.add(grid);
+
+  raycaster = new THREE.Raycaster();
+
+  // 吸附高亮标记（测量/标定模式下跟随鼠标）
+  snapMarker = new THREE.Mesh(
+    new THREE.SphereGeometry(1, 12, 12),
+    new THREE.MeshBasicMaterial({ color: 0xffcc44, transparent: true, opacity: 0.45, depthTest: false }));
+  snapMarker.visible = false;
+  snapMarker.renderOrder = 999;
+  scene.add(snapMarker);
+
+  window.addEventListener('resize', onResize);
+  renderer.domElement.addEventListener('pointerdown', onPointerDown);
+  renderer.domElement.addEventListener('pointerup', onPointerUp);
+  renderer.domElement.addEventListener('pointermove', onPointerMove);
+
+  animate();
+  initReferenceCard();   // 工效参考智能体（纯文本顾问，无 3D）
+  setupCollapsible();    // 面板折叠；两卡全折叠时侧栏缩成细条，模型最大化
+  initDragbar();         // 中缝手柄拖拽调整面板宽度
+  if (window.ResizeObserver) new ResizeObserver(onResize).observe(container);
+
+  // 支持 ?model=<url>&name=<名称> 自动加载（方案节点 iframe 传入当前 Tripo 模型）
+  const qp = new URLSearchParams(location.search);
+  const qModel = qp.get('model');
+  if (qModel) loadModelFromURL(qModel, qp.get('name') || '');
+
+  log('初始化完成，等待加载模型。');
+}
+
+function onResize() {
+  const c = document.getElementById('scene');
+  camera.aspect = c.clientWidth / c.clientHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(c.clientWidth, c.clientHeight);
+  labelRenderer.setSize(c.clientWidth, c.clientHeight);
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+  labelRenderer.render(scene, camera);
+}
+
+/* =========================================================================
+ * 三、模型加载（STL / GLB / OBJ）+ 内置示例
+ * ========================================================================= */
+function installModel(root, sourceName) {
+  if (modelGroup) {
+    scene.remove(modelGroup);
+    modelGroup.traverse(o => {
+      if (o.geometry) o.geometry.dispose();
+      if (o.material) o.material.dispose?.();
+    });
+  }
+  clearAnnotations();
+  resetCalibration();
+  pendingPoint = null;
+
+  modelGroup = new THREE.Group();
+  modelGroup.add(root);
+  scene.add(modelGroup);
+
+  const box = new THREE.Box3().setFromObject(modelGroup);
+  const center = box.getCenter(new THREE.Vector3());
+  modelGroup.position.sub(center);
+
+  modelSize = box.getSize(new THREE.Vector3()).length();
+  updateSnapMarkerScale();
+
+  // 吸附阈值自动初始化：模型对角线的 1%（可手动覆盖）
+  // —— 修复"固定 0.5 导致小模型总吸到同一点"：0.5 对对角线 1.17 的模型相当于 43% 半径
+  snapThreshold = Math.max(modelSize * 0.01, 0.001);
+  document.getElementById('snapThr').value = snapThreshold.toFixed(3);
+
+  const size = modelSize;
+  const dist = size * 1.8;
+  camera.position.set(dist, dist * 0.7, dist);
+  controls.target.set(0, 0, 0);
+  controls.update();
+
+  log(`已加载模型：${sourceName}｜包围盒对角线≈${modelSize.toFixed(2)} 模型单位`);
+}
+
+function loadSTLFromArrayBuffer(buf, name) {
+  const geo = new STLLoader().parse(buf);
+  geo.computeVertexNormals();
+  const mat = new THREE.MeshStandardMaterial({ color: 0x9fb4d4, roughness: 0.6, metalness: 0.1 });
+  installModel(new THREE.Mesh(geo, mat), name);
+}
+
+function loadGLBFromArrayBuffer(buf, name) {
+  new GLTFLoader().parse(buf, '', (gltf) => {
+    installModel(gltf.scene, name);
+  }, (err) => { log('GLB 解析失败：' + err.message); });
+}
+
+function loadOBJFromText(text, name) {
+  const obj = new OBJLoader().parse(text);
+  obj.traverse(o => {
+    if (o.isMesh) o.material = new THREE.MeshStandardMaterial({ color: 0x9fb4d4, roughness: 0.6 });
+  });
+  installModel(obj, name);
+}
+
+function generateSampleSTL() {
+  const x = 5, y = 10, z = 15;
+  const v = [
+    [-x,-y,-z],[x,-y,-z],[x,y,-z],[-x,y,-z],
+    [-x,-y, z],[x,-y, z],[x,y, z],[-x,y, z],
+  ];
+  const faces = [
+    [0,1,2,3],[4,5,6,7],[0,1,5,4],[3,2,6,7],[0,3,7,4],[1,2,6,5],
+  ];
+  const norm = [
+    [0,0,-1],[0,0,1],[0,-1,0],[0,1,0],[-1,0,0],[1,0,0],
+  ];
+  let s = 'solid sample_box\n';
+  faces.forEach((f, fi) => {
+    const n = norm[fi];
+    const tris = [[f[0],f[1],f[2]],[f[0],f[2],f[3]]];
+    tris.forEach(t => {
+      s += `facet normal ${n[0]} ${n[1]} ${n[2]}\n outer loop\n`;
+      t.forEach(i => { s += `  vertex ${v[i][0]} ${v[i][1]} ${v[i][2]}\n`; });
+      s += ' endloop\nendfacet\n';
+    });
+  });
+  s += 'endsolid sample_box\n';
+  return s;
+}
+
+function handleFile(file) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  const reader = new FileReader();
+  reader.onload = () => {
+    const buf = reader.result;
+    if (ext === 'stl') loadSTLFromArrayBuffer(buf, file.name);
+    else if (ext === 'glb' || ext === 'gltf') loadGLBFromArrayBuffer(buf, file.name);
+    else if (ext === 'obj') loadOBJFromText(new TextDecoder().decode(buf), file.name);
+    else if (ext === 'stp' || ext === 'step') loadSTEPFromArrayBuffer(buf, file.name);
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+/* ===== STP/STEP 直载（occt-import-js：WASM 版 OpenCascade，浏览器内解析 CAD BREP） ===== */
+const OCCT_BASE = 'https://cdn.jsdelivr.net/npm/occt-import-js@0.0.23/dist/';
+function loadOcctLib() {
+  if (window.occtimportjs) return Promise.resolve(window.occtimportjs);
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = OCCT_BASE + 'occt-import-js.js';
+    s.onload = () => resolve(window.occtimportjs);
+    s.onerror = () => reject(new Error('occt-import-js 脚本加载失败（检查网络）'));
+    document.head.appendChild(s);
+  });
+}
+async function loadSTEPFromArrayBuffer(buf, name) {
+  try {
+    log('STEP 解析器加载中（WASM 约 10MB，首次稍慢）...');
+    const occt = await loadOcctLib();
+    const inst = await occt({ locateFile: (f) => OCCT_BASE + f });
+    const res = inst.ReadStepFile(new Uint8Array(buf), null);
+    if (!res || !res.success || !res.root) { log('STEP 解析失败：文件无法读取。'); return; }
+    const group = new THREE.Group();
+    let count = 0;
+    const walk = (node, parentMat) => {
+      const mat = new THREE.Matrix4();
+      if (node.transformation) mat.fromArray(node.transformation);
+      mat.premultiply(parentMat);
+      (node.meshes || []).forEach(mi => {
+        const m = res.meshes[mi];
+        if (!m || !m.attributes || !m.attributes.position) return;
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(m.attributes.position.array, 3));
+        if (m.attributes.normal) geo.setAttribute('normal', new THREE.Float32BufferAttribute(m.attributes.normal.array, 3));
+        else geo.computeVertexNormals();
+        if (m.index) geo.setIndex(m.index.array);
+        const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0x9fb4d4, roughness: 0.55, metalness: 0.15 }));
+        mesh.applyMatrix4(mat);
+        group.add(mesh);
+        count++;
+      });
+      (node.children || []).forEach(ch => walk(ch, mat));
+    };
+    walk(res.root, new THREE.Matrix4());
+    installModel(group, name);
+    log(`STEP 解析完成：${count} 个网格（CAD 精确曲面细分，默认毫米单位，可用「基础设定」核对）。`);
+  } catch (err) {
+    log('STEP 加载失败：' + (err?.message || err));
+    alert('STEP 解析失败：' + (err?.message || '解析器加载失败，请检查网络后重试'));
+  }
+}
+
+/* =========================================================================
+ * 打开存档（主路：prototype_assets 表；备路：generated-models / prototype-assets 桶递归扫描）
+ * 支持 GLB/GLTF/STL/OBJ/STP/STEP 全格式
+ * ========================================================================= */
+const SUPABASE_URL = 'https://sgxkplfbptwdohjjnlzd.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNneGtwbGZicHR3ZG9oampubHpkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAwODc0NTYsImV4cCI6MjA5NTY2MzQ1Nn0._vpJdyjks3xuUgBXbsyIL72SWTqdAQTzVxDWnrW5H20';
+const ARCHIVE_EXTS = ['glb', 'gltf', 'stl', 'obj', 'stp', 'step'];
+
+// 主路：读 prototype_assets 表（每条含 name/version/storage_url，按时间倒序）
+async function listArchiveAssets() {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/prototype_assets?select=*&order=created_at.desc&limit=100`, {
+    headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+  });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const rows = await res.json() || [];
+  return rows.filter(a => {
+    const ext = ((a.name || a.storage_path || '').split('.').pop() || '').toLowerCase();
+    return ARCHIVE_EXTS.includes(ext);
+  });
+}
+
+// 备路：递归列出桶内模型文件（表为空/失败时兜底）
+async function walkBucketFiles(bucket, files, prefix = '', depth = 0) {
+  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/list/${bucket}`, {
+    method: 'POST',
+    headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prefix, limit: 200, offset: 0, sortBy: { column: 'created_at', order: 'desc' } }),
+  });
+  if (!res.ok) return;
+  const entries = await res.json() || [];
+  for (const f of entries) {
+    if (!f.id) { if (depth < 4) await walkBucketFiles(bucket, files, prefix + f.name + '/', depth + 1); }
+    else {
+      const ext = (f.name || '').split('.').pop().toLowerCase();
+      if (ARCHIVE_EXTS.includes(ext)) files.push({ bucket, fullPath: prefix + f.name, name: f.name, created_at: f.created_at, metadata: f.metadata });
+    }
+  }
+}
+
+async function openArchiveDlg() {
+  const dlg = document.getElementById('archiveDlg');
+  const listBox = document.getElementById('archiveList');
+  listBox.textContent = '加载中...';
+  dlg.showModal();
+  try {
+    let items = [];
+    try { items = await listArchiveAssets(); }
+    catch (e) { log('存档表读取失败，改扫存储桶：' + (e?.message || e)); }
+    if (!items.length) {
+      const files = [];
+      for (const b of ['generated-models', 'prototype-assets']) await walkBucketFiles(b, files);
+      items = files;
+    }
+    if (!items.length) { listBox.textContent = '存档中暂无可打开的模型（.glb/.gltf/.stl/.obj/.stp/.step）。'; return; }
+    listBox.innerHTML = '';
+    items.forEach(a => {
+      const ext = ((a.name || a.fullPath || '').split('.').pop() || '').toLowerCase();
+      const sizeKB = a.metadata && a.metadata.size ? Math.round(a.metadata.size / 1024) : null;
+      const date = (a.created_at || '').slice(0, 10);
+      const btn = document.createElement('button');
+      btn.textContent = `▸ ${a.name || a.fullPath}（${a.version ? a.version + ' · ' : ''}${date}${sizeKB ? ' · ' + sizeKB + 'KB' : ''}）`;
+      btn.title = a.storage_path || a.fullPath || a.name || '';
+      btn.style.cssText = 'display:block;width:100%;text-align:left;margin:4px 0;font-size:12px;';
+      btn.addEventListener('click', () => { dlg.close(); loadArchivedFile(a, ext); });
+      listBox.appendChild(btn);
+    });
+    log(`存档列表已加载：${items.length} 个模型。`);
+  } catch (err) {
+    listBox.textContent = '读取存档失败：' + (err?.message || err);
+    log('读取存档失败：' + (err?.message || err));
+  }
+}
+
+async function loadArchivedFile(a, ext) {
+  try {
+    const urls = [];
+    if (a.storage_url) urls.push(a.storage_url);
+    if (a.storage_path) {
+      const p = a.storage_path.split('/').map(encodeURIComponent).join('/');
+      urls.push(`${SUPABASE_URL}/storage/v1/object/public/generated-models/${p}`);
+      urls.push(`${SUPABASE_URL}/storage/v1/object/public/prototype-assets/${p}`);
+    }
+    if (a.bucket && a.fullPath) {
+      const p = a.fullPath.split('/').map(encodeURIComponent).join('/');
+      urls.push(`${SUPABASE_URL}/storage/v1/object/public/${a.bucket}/${p}`);
+      urls.push(`${SUPABASE_URL}/storage/v1/object/authenticated/${a.bucket}/${p}`);
+    }
+    log('开始下载存档：' + (a.name || a.fullPath));
+    let buf = null;
+    for (const u of urls) {
+      const res = await fetch(u);
+      if (res.ok) { buf = await res.arrayBuffer(); break; }
+    }
+    if (!buf) throw new Error('所有候选地址均下载失败');
+    const label = a.name || (a.fullPath || '').split('/').pop();
+    if (ext === 'glb' || ext === 'gltf') loadGLBFromArrayBuffer(buf, label);
+    else if (ext === 'stl') loadSTLFromArrayBuffer(buf, label);
+    else if (ext === 'obj') loadOBJFromText(new TextDecoder().decode(buf), label);
+    else if (ext === 'stp' || ext === 'step') loadSTEPFromArrayBuffer(buf, label);
+    else throw new Error('不支持的格式：' + ext);
+  } catch (err) {
+    log('存档加载失败：' + (err?.message || err));
+    alert('存档加载失败：' + (err?.message || err));
+  }
+}
+
+// 通过 URL 自动加载在线模型（供 iframe 以 ?model=<url>&name=<名称> 传入，如方案节点的 Tripo GLB）
+function loadModelFromURL(url, name) {
+  const clean = url.split('?')[0].split('#')[0];
+  const ext = clean.split('.').pop().toLowerCase();
+  const label = name || clean;
+  log('开始加载在线模型：' + label);
+  if (ext === 'glb' || ext === 'gltf') {
+    new GLTFLoader().load(url, (gltf) => installModel(gltf.scene, label),
+      undefined, (err) => log('在线 GLB 加载失败：' + (err?.message || err)));
+  } else if (ext === 'stl') {
+    fetch(url).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
+      .then(buf => loadSTLFromArrayBuffer(buf, label))
+      .catch(err => log('在线 STL 加载失败：' + err.message));
+  } else if (ext === 'obj') {
+    fetch(url).then(r => r.text()).then(t => loadOBJFromText(t, label))
+      .catch(err => log('在线 OBJ 加载失败：' + err.message));
+  } else if (ext === 'stp' || ext === 'step') {
+    fetch(url).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
+      .then(buf => loadSTEPFromArrayBuffer(buf, label))
+      .catch(err => log('在线 STEP 加载失败：' + err.message));
+  } else {
+    // 无扩展名（如 /proxy 代理地址）：默认按 GLB 尝试
+    new GLTFLoader().load(url, (gltf) => installModel(gltf.scene, label),
+      undefined, () => log('无法识别的模型格式：' + clean));
+  }
+}
+
+/* =========================================================================
+ * 四、单位换算
+ * ========================================================================= */
+function toMeters(rawLocalDist, scaleAtCapture) {
+  // rawLocalDist 恒为“模型单位”距离（与缩放无关）：
+  //  未标定：1 模型单位 = 1 当前显示单位；已标定：calibFactor = 米/模型单位，直接相乘。
+  //  （修复：此前标定后新建的标注漏乘 calibFactor，数值虚大 1/calibFactor 倍）
+  if (calibFactor == null) return rawLocalDist * UNIT_TO_METER[currentUnit];
+  return rawLocalDist * calibFactor;
+}
+function formatDistance(rawLocalDist, scaleAtCapture) {
+  const meters = toMeters(rawLocalDist, scaleAtCapture);
+  const val = meters / UNIT_TO_METER[currentUnit];
+  return `${val.toFixed(3)} ${UNIT_NAME[currentUnit]}`;
+}
+
+/* =========================================================================
+ * 五、拾取与吸附
+ * ========================================================================= */
+function pointerToNDC(e) {
+  const r = renderer.domElement.getBoundingClientRect();
+  return new THREE.Vector2(
+    ((e.clientX - r.left) / r.width) * 2 - 1,
+    -((e.clientY - r.top) / r.height) * 2 + 1,
+  );
+}
+function pickSurface(e) {
+  if (!modelGroup) return null;
+  raycaster.setFromCamera(pointerToNDC(e), camera);
+  const hits = raycaster.intersectObject(modelGroup, true);
+  // 跳过标注对象（线/锥/端点球），只取模型本体的最近命中
+  const h = hits.find(x => !x.object.userData.isAnnotation) || null;
+  if (!h) return null;
+  const point = h.point.clone();
+  let normal = new THREE.Vector3(0, 1, 0);
+  if (h.face) normal = h.face.normal.clone().transformDirection(h.object.matrixWorld);
+  return { point, normal, mesh: h.object };
+}
+function snapToVertex(p, mesh) {
+  const pos = mesh.geometry.attributes.position;
+  const v = new THREE.Vector3();
+  let best = null, bestD = Infinity;
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld);
+    const d = v.distanceTo(p);
+    if (d < bestD) { bestD = d; best = v.clone(); }
+  }
+  const thr = snapThreshold * (modelGroup ? modelGroup.scale.x : 1);
+  return bestD < thr ? best : null;
+}
+function closestPointOnSegment(p, a, b) {
+  const ab = new THREE.Vector3().subVectors(b, a);
+  const t = THREE.MathUtils.clamp(
+    new THREE.Vector3().subVectors(p, a).dot(ab) / ab.lengthSq(), 0, 1);
+  return new THREE.Vector3().copy(a).addScaledVector(ab, t);
+}
+function snapToEdge(p, mesh) {
+  const pos = mesh.geometry.attributes.position;
+  const a = new THREE.Vector3(), b = new THREE.Vector3();
+  let best = null, bestD = Infinity;
+  for (let i = 0; i + 2 < pos.count; i += 3) {
+    const tri = [0, 1, 2].map(k =>
+      new THREE.Vector3().fromBufferAttribute(pos, i + k).applyMatrix4(mesh.matrixWorld));
+    for (const [p1, p2] of [[tri[0], tri[1]], [tri[1], tri[2]], [tri[2], tri[0]]]) {
+      const proj = closestPointOnSegment(p, p1, p2);
+      const d = proj.distanceTo(p);
+      if (d < bestD) { bestD = d; best = proj.clone(); }
+    }
+  }
+  const thr = snapThreshold * (modelGroup ? modelGroup.scale.x : 1);
+  return bestD < thr ? best : null;
+}
+function pickPoint(e) {
+  const hit = pickSurface(e);
+  if (!hit) return null;
+  let point = hit.point;
+  if (snapMode === 'vertex' && !e.altKey) {
+    const s = snapToVertex(point, hit.mesh); if (s) point = s;
+  } else if (snapMode === 'edge' && !e.altKey) {
+    const s = snapToEdge(point, hit.mesh); if (s) point = s;
+  }
+  return { point, normal: hit.normal };
+}
+
+/* =========================================================================
+ * 六、标注渲染
+ * ========================================================================= */
+function addAnnotation(pA, pB, nA, nB) {
+  const cur = modelGroup.scale.x;
+  const rawLocalDist = pA.distanceTo(pB) / cur;
+
+  modelGroup.updateMatrixWorld(true);
+  const lA = modelGroup.worldToLocal(pA.clone());
+  const lB = modelGroup.worldToLocal(pB.clone());
+  const lnA = nA.clone();
+  const lnB = nB.clone();
+
+  const ann = {
+    a: pA.clone(), b: pB.clone(),
+    scaleAtCapture: cur, rawLocalDist,
+    group: new THREE.Group(),
+    endA: null, endB: null, labelObj: null,
+    meta: { created: new Date().toISOString() },
+  };
+
+  const offset = modelSize * 0.015;   // 浮出量=模型自身对角线1.5%，随模型缩放（不再÷cur，标定后不会相对变大）
+  const A = lA.clone().add(lnA.clone().multiplyScalar(offset));
+  const B = lB.clone().add(lnB.clone().multiplyScalar(offset));
+
+  const g = ann.group;
+  const lineMat = new THREE.LineBasicMaterial({ color: 0x2f6df6 });
+  g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([lA, A]), lineMat));
+  g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([lB, B]), lineMat));
+  g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([A, B]), lineMat));
+
+  const dir = new THREE.Vector3().subVectors(B, A).normalize();
+  const coneGeo = new THREE.ConeGeometry(modelSize * 0.006, modelSize * 0.02, 12);
+  const coneMat = new THREE.MeshBasicMaterial({ color: 0x2f6df6 });
+  const coneA = new THREE.Mesh(coneGeo, coneMat);
+  coneA.position.copy(A);
+  coneA.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().negate());
+  const coneB = new THREE.Mesh(coneGeo, coneMat);
+  coneB.position.copy(B);
+  coneB.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+  g.add(coneA, coneB);
+
+  const sphereGeo = new THREE.SphereGeometry(modelSize * 0.006, 12, 12);
+  const mkEnd = (pos) => {
+    const m = new THREE.Mesh(sphereGeo, new THREE.MeshBasicMaterial({ color: 0x2f6df6 }));
+    m.position.copy(pos);
+    m.userData.annotation = ann;
+    g.add(m);
+    return m;
+  };
+  ann.endA = mkEnd(A);
+  ann.endB = mkEnd(B);
+
+  const div = document.createElement('div');
+  div.className = 'anno-label';
+  const labelObj = new CSS2DObject(div);
+  labelObj.position.copy(new THREE.Vector3().addVectors(A, B).multiplyScalar(0.5));
+  g.add(labelObj);
+  ann.labelObj = labelObj;
+  ann.labelDiv = div;
+
+  // 标注对象打 userData 标记：渲染/CSS2D 标签不受 layers 影响（保持 layer 0 可见），
+  // 仅在 pickSurface 射线过滤时跳过标注对象，
+  // 修复"第二次拾取先命中旧标注的箭头/端点球 → 吸附总落在第一次标注附近"
+  g.traverse(o => { o.userData.isAnnotation = true; });
+  modelGroup.add(g);
+  annotations.push(ann);
+  updateAnnotationLabel(ann);
+  log(`新增标注：距离 ${formatDistance(ann.rawLocalDist, ann.scaleAtCapture)}`);
+  return ann;
+}
+function updateAnnotationLabel(ann) {
+  ann.labelDiv.textContent = formatDistance(ann.rawLocalDist, ann.scaleAtCapture);
+}
+function refreshAllLabels() { annotations.forEach(updateAnnotationLabel); }
+function selectAnnotation(ann) {
+  if (selectedAnnotation) {
+    selectedAnnotation.endA.material.color.set(0x2f6df6);
+    selectedAnnotation.endB.material.color.set(0x2f6df6);
+    selectedAnnotation.labelDiv.classList.remove('sel');
+  }
+  selectedAnnotation = ann;
+  if (ann) {
+    ann.endA.material.color.set(0xe0533d);
+    ann.endB.material.color.set(0xe0533d);
+    ann.labelDiv.classList.add('sel');
+    log('已选中标注，可点「删除选中」。');
+  }
+}
+function removeAnnotation(ann) {
+  if (modelGroup) modelGroup.remove(ann.group);
+  if (ann.labelObj && ann.labelObj.element) ann.labelObj.element.remove(); // CSS2D 标签 DOM 需手动移除，否则遗留数字
+  ann.group.traverse(o => {
+    if (o.geometry) o.geometry.dispose();
+    if (o.material) o.material.dispose?.();
+  });
+  const i = annotations.indexOf(ann);
+  if (i >= 0) annotations.splice(i, 1);
+  if (selectedAnnotation === ann) selectedAnnotation = null;
+}
+function clearAnnotations() { [...annotations].forEach(removeAnnotation); }
+
+/* =========================================================================
+ * 七、比例标定
+ * ========================================================================= */
+function startCalibration() {
+  if (!modelGroup) { alert('请先加载模型。'); return; }
+  if (calibFactor != null) {
+    if (!confirm('已存在标定，继续将覆盖当前标定。是否重置后重新标定？')) return;
+    resetCalibration();
+  }
+  calibState = { step: 1, pA: null };
+  log('标定模式：请点选第 1 个已知真实距离的点。');
+  alert('标定模式：请在模型上点选第 1 个已知真实距离的点（短点）。');
+}
+function applyCalibration(pA, pB, real) {
+  const cur0 = modelGroup.scale.x;
+  const D0 = pA.distanceTo(pB) / cur0;
+  calibFactor = (real * UNIT_TO_METER[currentUnit]) / D0;
+  calibUnit = currentUnit;
+  modelGroup.scale.setScalar(calibFactor);
+  updateSnapMarkerScale();
+  log(`已标定：1 模型单位 = ${calibFactor.toExponential(3)} 米（基准单位 ${UNIT_NAME[calibUnit]}）`);
+  refreshAllLabels();
+}
+function resetCalibration() {
+  if (modelGroup) modelGroup.scale.setScalar(1);
+  updateSnapMarkerScale();
+  calibFactor = null;
+  calibUnit = null;
+  refreshAllLabels();
+  log('已重置标定（模型恢复原始比例）。');
+}
+
+/* =========================================================================
+ * 八、标准视图
+ * ========================================================================= */
+function setView(name) {
+  if (!modelGroup) return;
+  const r = modelSize * 1.8;
+  if (name === 'front') camera.position.set(0, 0, r);
+  if (name === 'side')  camera.position.set(r, 0, 0);
+  if (name === 'top')   camera.position.set(0, r, 0.001);
+  controls.target.set(0, 0, 0);
+  controls.update();
+}
+
+/* =========================================================================
+ * 九、导出 JSON
+ * ========================================================================= */
+function exportJSON() {
+  if (!modelGroup) { alert('无模型可导出。'); return; }
+  const data = {
+    meta: {
+      tool: 'Three.js 尺寸测量与标注',
+      exportedAt: new Date().toISOString(),
+      currentUnit: UNIT_NAME[currentUnit],
+      calibrated: calibFactor != null,
+      scaleFactor: modelGroup.scale.x,
+    },
+    annotations: annotations.map(a => ({
+      pointA: { x: a.a.x, y: a.a.y, z: a.a.z },
+      pointB: { x: a.b.x, y: a.b.y, z: a.b.z },
+      distanceMeters: a.rawLocalDist * (calibFactor != null ? calibFactor : UNIT_TO_METER[currentUnit]),
+      distanceDisplay: formatDistance(a.rawLocalDist, a.scaleAtCapture),
+      unit: UNIT_NAME[currentUnit],
+      timestamp: a.meta.created,
+    })),
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'measurements.json';
+  a.click();
+  URL.revokeObjectURL(url);
+  log(`已导出 JSON：${annotations.length} 条标注。`);
+}
+
+/* =========================================================================
+ * 十、鼠标交互
+ * ========================================================================= */
+let downPos = null;
+function onPointerDown(e) { downPos = { x: e.clientX, y: e.clientY }; }
+function onPointerUp(e) {
+  if (!downPos) return;
+  const moved = Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y);
+  downPos = null;
+  if (moved > 5) return;
+
+  if (calibState) {
+    const p = pickPoint(e);
+    if (!p) return;
+    if (calibState.step === 1) {
+      calibState.pA = p.point; calibState.step = 2;
+      log('标定：已记录第 1 点，请点选第 2 个点。');
+    } else if (calibState.step === 2) {
+      const real = parseFloat(prompt('请输入这两点的真实距离（当前单位：' + UNIT_NAME[currentUnit] + '）：'));
+      if (!isNaN(real) && real > 0) applyCalibration(calibState.pA, p.point, real);
+      calibState = null;
+    }
+    return;
+  }
+
+  if (modelGroup) {
+    raycaster.setFromCamera(pointerToNDC(e), camera);
+    const ends = [];
+    annotations.forEach(a => ends.push(a.endA, a.endB));
+    const hits = raycaster.intersectObjects(ends, false);
+    if (hits.length) { selectAnnotation(hits[0].object.userData.annotation); return; }
+  }
+
+  if (measurementMode) {
+    const p = pickPoint(e);
+    if (!p) return;
+    if (!pendingPoint) { pendingPoint = p; log('已拾取第 1 点，请点选第 2 个点。'); }
+    else if (pendingPoint.point.distanceTo(p.point) < 1e-6) {
+      log('⚠ 第 2 点与第 1 点为同一位置，请重新拾取第 2 点（按 Esc 取消重来）。');
+    }
+    else { addAnnotation(pendingPoint.point, p.point, pendingPoint.normal, p.normal); pendingPoint = null; }
+  }
+}
+
+/* =========================================================================
+ * 十一、测量模块 UI 事件绑定
+ * ========================================================================= */
+function bindUI() {
+  document.getElementById('fileInput').addEventListener('change', (e) => {
+    if (e.target.files[0]) handleFile(e.target.files[0]);
+  });
+  document.getElementById('btnSample').addEventListener('click', () => {
+    const stl = generateSampleSTL();
+    loadSTLFromArrayBuffer(new TextEncoder().encode(stl), '示例盒子(10×20×30)');
+  });
+  document.getElementById('btnArchive').addEventListener('click', openArchiveDlg);
+  document.getElementById('btnArchiveRefresh').addEventListener('click', openArchiveDlg);
+  document.getElementById('btnArchiveClose').addEventListener('click', () => document.getElementById('archiveDlg').close());
+  document.getElementById('unitSel').addEventListener('change', (e) => {
+    currentUnit = e.target.value;
+    refreshAllLabels();
+    computeFit();
+    log('切换单位 -> ' + UNIT_NAME[currentUnit] + '，已同步标注数值与适配结论。');
+  });
+  const btnMeasure = document.getElementById('btnMeasure');
+  btnMeasure.addEventListener('click', () => {
+    measurementMode = !measurementMode;
+    btnMeasure.textContent = measurementMode ? '测量模式：开' : '测量模式：关';
+    btnMeasure.classList.toggle('active', measurementMode);
+    pendingPoint = null;
+  });
+  document.getElementById('snapSel').addEventListener('change', (e) => { snapMode = e.target.value; });
+  document.getElementById('snapThr').addEventListener('change', (e) => { snapThreshold = parseFloat(e.target.value) || 0.5; });
+  document.getElementById('viewSel').addEventListener('change', (e) => setView(e.target.value));
+  document.getElementById('btnFull').addEventListener('click', toggleFullscreen);
+  document.getElementById('btnBasic').addEventListener('click', openCalibDlg);
+  document.getElementById('btnCalibDims').addEventListener('click', calibByDims);
+  document.getElementById('btnCalib2pt').addEventListener('click', () => {
+    document.getElementById('calibDlg').close(); startCalibration();
+  });
+  document.getElementById('btnCalibCancel').addEventListener('click', () => { resetCalibration(); updateCalibDlg(); });
+  document.getElementById('btnCalibClose').addEventListener('click', () => document.getElementById('calibDlg').close());
+  document.getElementById('btnDel').addEventListener('click', () => {
+    if (selectedAnnotation) { removeAnnotation(selectedAnnotation); log('已删除选中标注。'); }
+    else log('没有选中的标注。');
+  });
+  document.getElementById('btnClear').addEventListener('click', () => { clearAnnotations(); log('已清空全部标注。'); });
+  document.getElementById('btnExport').addEventListener('click', exportJSON);
+  window.addEventListener('keydown', (e) => {
+    if ((e.key === 'Delete' || e.key === 'Backspace') && selectedAnnotation) {
+      removeAnnotation(selectedAnnotation); log('已删除选中标注（快捷键）。');
+    }
+    if (e.key === 'Escape') {
+      let cancelled = false;
+      if (pendingPoint) { pendingPoint = null; cancelled = true; }
+      if (calibState) { calibState = null; cancelled = true; }
+      if (cancelled) {
+        snapMarker.visible = false;
+        log('已取消当前拾取，下次点击重新从第 1 点开始。');
+      }
+    }
+  });
+}
+
+/* 面板折叠：点卡片头部收起/展开；两张卡全收起时侧栏缩成细条（模型展示最大化） */
+function setupCollapsible() {
+  const sidebar = document.getElementById('sidebar');
+  const cards = [...sidebar.querySelectorAll('.card')];
+  function updateRail() {
+    const allCollapsed = cards.every(c => c.classList.contains('collapsed'));
+    sidebar.classList.toggle('rail', allCollapsed);
+    // 细条模式清掉内联宽度（CSS .rail 48px 生效）；展开时恢复拖拽设定的宽度
+    sidebar.style.flexBasis = allCollapsed ? '' : (sidebarWidth + 'px');
+    onResize(); // 侧栏宽度变化后同步画布尺寸
+  }
+  cards.forEach(card => {
+    const hdr = card.querySelector('h3');
+    const arr = hdr.querySelector('.arr');
+    hdr.addEventListener('click', () => {
+      const collapsed = card.classList.toggle('collapsed');
+      if (arr) arr.textContent = collapsed ? '▸' : '▾';
+      updateRail();
+    });
+  });
+}
+
+/* =========================================================================
+ * 吸附高亮 + 侧栏拖拽 + 全屏 + 基础设定（标定）对话框
+ * ========================================================================= */
+
+// 吸附高亮：测量/标定模式下鼠标移动实时显示吸附点（rAF 节流防大模型卡顿）
+let movePending = false;
+function onPointerMove(e) {
+  if (!snapMarker) return;
+  if (!measurementMode && !calibState) { snapMarker.visible = false; return; }
+  if (movePending) return;
+  movePending = true;
+  requestAnimationFrame(() => {
+    movePending = false;
+    const hit = pickSurface(e);
+    if (!hit) { snapMarker.visible = false; return; }
+    let p = hit.point, snapped = false;
+    if (snapMode === 'vertex' && !e.altKey) { const s = snapToVertex(p, hit.mesh); if (s) { p = s; snapped = true; } }
+    else if (snapMode === 'edge' && !e.altKey) { const s = snapToEdge(p, hit.mesh); if (s) { p = s; snapped = true; } }
+    snapMarker.position.copy(p);
+    snapMarker.material.color.set(snapped ? 0x36d39a : 0xffcc44);
+    snapMarker.visible = true;
+  });
+}
+
+// 侧栏拖拽加宽：抓住中缝手柄向左拖
+let sidebarWidth = 280;
+function initDragbar() {
+  const drag = document.getElementById('dragbar');
+  const sidebar = document.getElementById('sidebar');
+  let dragging = false;
+  drag.addEventListener('pointerdown', (e) => {
+    if (sidebar.classList.contains('rail')) return; // 细条模式先点标题展开卡片，再拖
+    dragging = true;
+    drag.setPointerCapture(e.pointerId);
+    document.body.style.cursor = 'col-resize';
+  });
+  drag.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const rect = document.getElementById('main').getBoundingClientRect();
+    const w = rect.right - e.clientX - 6;
+    sidebarWidth = Math.max(200, Math.min(window.innerWidth * 0.7, w));
+    sidebar.style.flexBasis = sidebarWidth + 'px';
+  });
+  const stop = () => { dragging = false; document.body.style.cursor = ''; };
+  drag.addEventListener('pointerup', stop);
+  drag.addEventListener('pointercancel', stop);
+}
+
+// 全屏（需外层 iframe 加 allow="fullscreen"）
+function toggleFullscreen() {
+  if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
+  else document.exitFullscreen?.();
+}
+
+// 基础设定（标定）对话框
+function openCalibDlg() {
+  if (!modelGroup) { alert('请先加载模型。'); return; }
+  updateCalibDlg();
+  document.getElementById('calibDlg').showModal();
+}
+function updateCalibDlg() {
+  const st = document.getElementById('calibStatus');
+  st.textContent = calibFactor != null
+    ? `已标定：1 模型单位 = ${calibFactor.toExponential(3)} 米（点「取消标定」恢复原始比例）`
+    : '未标定（当前按 1 模型单位 = 1 所选单位 显示）';
+  document.getElementById('calibUnitLabel').textContent = UNIT_NAME[currentUnit];
+  // 包围盒（模型单位，与标定缩放无关：临时复位 scale 测量后还原）
+  const s = modelGroup.scale.x;
+  modelGroup.scale.setScalar(1);
+  modelGroup.updateMatrixWorld(true);
+  const size = new THREE.Box3().setFromObject(modelGroup).getSize(new THREE.Vector3());
+  modelGroup.scale.setScalar(s);
+  modelGroup.updateMatrixWorld(true);
+  document.getElementById('bboxInfo').textContent =
+    `X=${size.x.toFixed(2)}  Y=${size.y.toFixed(2)}  Z=${size.z.toFixed(2)}`;
+  // 各方向标注当前包围盒长度并标出最长轴——"长180"要填到最长轴对应的格子才对
+  const maxV = Math.max(size.x, size.y, size.z);
+  document.getElementById('lblX').textContent = `长 X（${size.x.toFixed(2)}）${size.x === maxV ? ' ←最长' : ''}`;
+  document.getElementById('lblY').textContent = `高 Y（${size.y.toFixed(2)}）${size.y === maxV ? ' ←最长' : ''}`;
+  document.getElementById('lblZ').textContent = `宽 Z（${size.z.toFixed(2)}）${size.z === maxV ? ' ←最长' : ''}`;
+  return size;
+}
+function calibByDims() {
+  const size = updateCalibDlg();
+  const vals = [['realX', size.x], ['realZ', size.z], ['realY', size.y]];
+  const ratios = [];
+  vals.forEach(([id, axisLen]) => {
+    const v = parseFloat(document.getElementById(id).value);
+    if (!isNaN(v) && v > 0 && axisLen > 1e-9) ratios.push(v / axisLen);
+  });
+  if (!ratios.length) { alert('请至少填写一个方向的真实尺寸。'); return; }
+  const used = ratios[0]; // 单一比例只能对一个方向精确，取第1个填写方向，其余仅作参考
+  calibFactor = used * UNIT_TO_METER[currentUnit];
+  calibUnit = currentUnit;
+  modelGroup.scale.setScalar(calibFactor);
+  const spread = Math.max(...ratios) / Math.min(...ratios);
+  log(`按尺寸标定：比例=${used.toFixed(4)}（取第1个填写方向）；各方向比例=[${ratios.map(r => r.toFixed(1)).join(', ')}]` +
+      (ratios.length > 1 && spread > 1.15 ? '｜⚠ 各方向比例差异大=模型比例与真实尺寸不符，建议只填最可信的一个方向' : ''));
+  refreshAllLabels();
+  updateCalibDlg();
+  updateSnapMarkerScale();
+}
+
+// 吸附标记尺寸：取模型当前世界对角线的 0.6%，小而半透明，不遮挡标注
+function updateSnapMarkerScale() {
+  if (!snapMarker || !modelGroup) return;
+  snapMarker.scale.setScalar(Math.max(modelSize * modelGroup.scale.x * 0.006, 1e-9));
+}
+
+/* =========================================================================
+ * 十二、工效参考智能体（纯文本顾问，替代参数化 3D 手建模）
+ * ========================================================================= */
+const DATA_VERSION = 'ANTHRO-PLACEHOLDER-v0（占位，待替换 GB/T 16252 正式值）';
+const ANTHRO_DATA = {
+  p5:  { palmWidth:74,  indexBreadth:15, indexLength:62 },
+  p50: { palmWidth:84,  indexBreadth:18, indexLength:70 },
+  p95: { palmWidth:94,  indexBreadth:21, indexLength:78 },
+};
+let refPct = 'p50';
+let anthro = { ...ANTHRO_DATA.p50 };
+const deviceParams = { handleDia: 32, triggerDist: 70, ringInner: 22 };
+
+function grade(gap, ok) {
+  if (gap > ok) return '适配';
+  if (gap > 0) return '临界';
+  return '不适配';
+}
+function guideRing(g){ if(g<0) return '↳ 指环过紧，手指难以伸入，建议内径 ≥ 指宽+3mm'; if(g<=3) return '↳ 偏紧，长时间使用易勒指'; return '↳ 松紧适宜'; }
+function guideHandle(g){ if(g<0) return '↳ 握柄粗于掌跨，单手难舒适握持，建议柄径 ≤ 掌宽'; if(g<=5) return '↳ 偏粗，满握时指节相触'; return '↳ 握持跨度合适'; }
+function guideReach(g){ if(g<0) return '↳ 激发键超出食指自然可及范围，需移指或加长指'; if(g<=5) return '↳ 临界，需刻意伸展'; return '↳ 触达舒适'; }
+
+// 计算三项适配结论 + 工效建议，写入参考卡文本区（智能体输出）
+function computeFit() {
+  const el = document.getElementById('fitReport');
+  if (!el) return;
+  const mmToCur = (mm) => (mm * 0.001 / UNIT_TO_METER[currentUnit]);
+  const u = UNIT_NAME[currentUnit];
+  const f = (mm) => `${mmToCur(mm).toFixed(2)} ${u}`;
+  const fingerW = anthro.indexBreadth;
+  const ringGap = deviceParams.ringInner - fingerW;
+  const span = anthro.palmWidth;
+  const handleGap = span - deviceParams.handleDia;
+  const reachGap = anthro.indexLength - deviceParams.triggerDist;
+
+  const lines = [
+    `百分位档：${refPct}${anthroEdited ? '（人体值已手动覆盖）' : ''}（来源：${DATA_VERSION}）`,
+    '',
+    `【指环】内径 ${f(deviceParams.ringInner)} vs 指宽 ${f(fingerW)} → ${grade(ringGap,3)}（差 ${f(ringGap)}）`,
+    guideRing(ringGap),
+    `【握柄】掌跨 ${f(span)} vs 柄径 ${f(deviceParams.handleDia)} → ${grade(handleGap,5)}（差 ${f(handleGap)}）`,
+    guideHandle(handleGap),
+    `【触达】指长 ${f(anthro.indexLength)} vs 键距 ${f(deviceParams.triggerDist)} → ${grade(reachGap,5)}（差 ${f(reachGap)}）`,
+    guideReach(reachGap),
+  ];
+  el.textContent = lines.join('\n');
+  log('工效参考｜指环:' + grade(ringGap,3) + '｜握柄:' + grade(handleGap,5) + '｜触达:' + grade(reachGap,5));
+}
+
+let anthroEdited = false; // 手动覆盖过人体测量值后，报告里注明口径
+
+function syncAnthroInputs() {
+  document.getElementById('aPalm').value = anthro.palmWidth;
+  document.getElementById('aIndexB').value = anthro.indexBreadth;
+  document.getElementById('aIndexL').value = anthro.indexLength;
+}
+
+function initReferenceCard() {
+  document.getElementById('refPct').addEventListener('change', (e) => {
+    refPct = e.target.value;
+    anthro = { ...ANTHRO_DATA[refPct] };
+    anthroEdited = false;
+    syncAnthroInputs();
+    computeFit();
+    log(`切换百分位 -> ${refPct}，参考结论已按该档人体测量值更新。`);
+  });
+  // 人体测量值手动覆盖（mm）：直接改写当前生效值，即时重算
+  document.getElementById('aPalm').addEventListener('change', (e) => {
+    anthro.palmWidth = parseFloat(e.target.value) || anthro.palmWidth; anthroEdited = true; computeFit();
+  });
+  document.getElementById('aIndexB').addEventListener('change', (e) => {
+    anthro.indexBreadth = parseFloat(e.target.value) || anthro.indexBreadth; anthroEdited = true; computeFit();
+  });
+  document.getElementById('aIndexL').addEventListener('change', (e) => {
+    anthro.indexLength = parseFloat(e.target.value) || anthro.indexLength; anthroEdited = true; computeFit();
+  });
+  document.getElementById('devHandle').addEventListener('change', (e) => {
+    deviceParams.handleDia = parseFloat(e.target.value) || deviceParams.handleDia; computeFit();
+  });
+  document.getElementById('devTrigger').addEventListener('change', (e) => {
+    deviceParams.triggerDist = parseFloat(e.target.value) || deviceParams.triggerDist; computeFit();
+  });
+  document.getElementById('devRing').addEventListener('change', (e) => {
+    deviceParams.ringInner = parseFloat(e.target.value) || deviceParams.ringInner; computeFit();
+  });
+  syncAnthroInputs();
+  computeFit();
+}
+
+/* =========================================================================
+ * 十三、启动
+ * ========================================================================= */
+init();
+bindUI();
+</script>
+</body>
+</html>

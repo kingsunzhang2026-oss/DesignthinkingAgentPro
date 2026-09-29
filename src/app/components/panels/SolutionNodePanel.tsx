@@ -53,7 +53,7 @@ const VARIANT_HINTS = [
 const GEN_MODES: { key: TripoMode; label: string; hint: string }[] = [
   { key: 'text_to_model', label: '文生 3D', hint: '输入文字描述直接生成' },
   { key: 'image_to_model', label: '图生 3D', hint: '上传一张参考图生成' },
-  { key: 'multiview_to_model', label: '多视图 3D', hint: '上传前/后/左/右四视图生成' },
+  { key: 'multiview_to_model', label: '多视图 3D', hint: '正交前/左/后/右视图（前必填，至少2张；透视图请用图生3D）' },
 ];
 
 const VIEWS = ['front', 'back', 'left', 'right'] as const;
@@ -288,14 +288,18 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
     try {
       if (genMode === 'text_to_model' && !v.prompt.trim()) throw new Error(`方案 ${v.label} 请输入生成描述`);
 
-      let imageUrls: string[] | undefined;
+      let imageUrls: string[] | Record<string, string> | undefined;
       if (genMode === 'image_to_model') {
         if (!singleImage) throw new Error('请先上传一张参考图');
         imageUrls = [await uploadReferenceImageGetUrl(singleImage, nodeId)];
       } else if (genMode === 'multiview_to_model') {
-        const missing = VIEWS.filter((vw) => !multiview[vw]);
-        if (missing.length > 0) throw new Error('请上传缺失的视图：' + missing.map((vw) => VIEW_LABEL[vw]).join('、'));
-        imageUrls = await Promise.all(VIEWS.map((vw) => uploadReferenceImageGetUrl(multiview[vw]!, nodeId)));
+        // Tripo 规则：front 必填、至少 2 张，后/左/右可选；接口只收正交视图（无顶视图/透视图）
+        if (!multiview.front) throw new Error('多视图生成必须上传「前视图」（Tripo 接口要求）。');
+        const filled = VIEWS.filter((vw) => multiview[vw]);
+        if (filled.length < 2) throw new Error('多视图生成至少需要 2 张视图；透视/立体效果图请改用「图生 3D」单图模式。');
+        imageUrls = Object.fromEntries(await Promise.all(
+          filled.map(async (vw) => [vw, await uploadReferenceImageGetUrl(multiview[vw]!, nodeId)] as const)
+        ));
       }
 
       setGenStatusText(`方案 ${v.label}：提交生成任务…`);
@@ -538,7 +542,7 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
                   <input type="file" accept="image/*" onChange={(e) => onMultiviewChange(vw, e)} className="hidden" id={`mv-${vw}`} />
                   <label htmlFor={`mv-${vw}`} className="flex flex-col items-center justify-center gap-1 border-2 border-dashed border-border rounded-lg p-2 cursor-pointer hover:border-node-solution text-muted-foreground">
                     {multiviewPreviews[vw] ? <img src={multiviewPreviews[vw]} alt={vw} className="h-12 w-12 object-cover rounded" /> : <ImageIcon className="w-4 h-4" />}
-                    <span className="text-[10px]">{VIEW_LABEL[vw]}视图</span>
+                    <span className="text-[10px]">{VIEW_LABEL[vw]}视图{vw === 'front' ? '（必填）' : ''}</span>
                   </label>
                 </div>
               ))}
@@ -612,7 +616,7 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
             </div>
           )}
           <p className="mt-1 text-[10px] text-muted-foreground">
-            提示：STP/STEP 不能直接生成 3D，可作为原型存档；图生/多视图需先上传图片。生成消耗 Tripo 额度。双击画布中的方案节点也可进入全屏对比。
+            提示：STP/STEP 不能直接生成 3D，可作为原型存档。多视图仅收正交前/左/后/右（Tripo 接口限制，不收顶视图/透视图）；透视/立体效果图请用「图生 3D」单图模式。生成消耗 Tripo 额度。双击画布中的方案节点也可进入全屏对比。
           </p>
         </div>
 
@@ -654,6 +658,25 @@ export function SolutionNodePanel({ nodeId }: SolutionNodePanelProps) {
             </div>
           )}
         </div>
+
+        {/* ===== 尺寸测量 & 工效参考（iframe 嵌入独立查看器；?model= 自动加载当前方案模型） ===== */}
+        <details className="mt-4 border border-border rounded-lg p-2">
+          <summary className="cursor-pointer text-sm text-foreground flex items-center gap-2 select-none">
+            <Box className="w-4 h-4 text-node-solution" /> 尺寸测量与工效参考
+            <span className="text-[10px] text-muted-foreground">
+              {previewUrl ? '（已自动加载当前模型，可测距标注）' : '（打开上方模型预览后，此处自动加载该模型）'}
+            </span>
+          </summary>
+          <iframe
+            src={previewUrl
+              ? `/model-measure-viewer.html?model=${encodeURIComponent(previewUrl)}&name=${encodeURIComponent(previewName || '')}`
+              : '/model-measure-viewer.html'}
+            title="尺寸测量与工效参考"
+            allow="fullscreen"
+            className="w-full mt-2 rounded border border-border"
+            style={{ height: 460, background: '#1a1d23' }}
+          />
+        </details>
 
         {/* ===== 原型资产 ===== */}
         <div>

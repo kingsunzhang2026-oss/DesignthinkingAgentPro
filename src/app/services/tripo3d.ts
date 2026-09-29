@@ -38,7 +38,7 @@ export async function generateModel(opts: {
   mode: TripoMode;
   tier: TripoTier;
   prompt?: string;
-  imageUrls?: string[];
+  imageUrls?: string[] | Record<string, string>;
 }, retry = 1): Promise<string> {
   const res = await fetch(`${FN_BASE}/generate`, {
     method: 'POST',

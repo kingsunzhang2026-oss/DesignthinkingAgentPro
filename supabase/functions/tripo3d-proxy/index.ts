@@ -147,17 +147,23 @@ app.post("*", async (c) => {
     endpoint = "/v3/generation/image-to-model";
     payload.input = input;
   } else if (mode === "multiview_to_model") {
-    // imageUrls 支持 { front, back, left, right } 或 [{ type, url }]
-    let inputs: any[] = [];
+    // 归一化到 { front/left/back/right: url }（兼容对象、[{type,url}]、位置数组三种入参）
+    let byView: Record<string, string> = {};
     if (Array.isArray(imageUrls)) {
-      inputs = imageUrls.map((u: any, i: number) => ({
-        type: ["front", "back", "left", "right"][i] || `view${i}`,
-        url: typeof u === "string" ? u : u.url,
-      }));
+      const posOrder = ["front", "left", "back", "right"]; // Tripo 官方位置顺序
+      imageUrls.forEach((u: any, i: number) => {
+        const type = (u && typeof u === "object" && u.type) ? String(u.type) : posOrder[i];
+        const url = typeof u === "string" ? u : u?.url;
+        if (type && url) byView[type] = url;
+      });
     } else if (imageUrls && typeof imageUrls === "object") {
-      inputs = Object.entries(imageUrls).map(([type, url]) => ({ type, url }));
+      byView = imageUrls;
     }
-    if (inputs.length === 0) return c.json({ ok: false, error: "imageUrls required" }, 400);
+    // Tripo v3 legacy positional：恰好 4 个字符串，顺序 [front, left, back, right]，空串跳过该视图
+    // （接口白名单只有这四个正交视图，不支持 top/透视；front 必填，至少 2 张）
+    const inputs = ["front", "left", "back", "right"].map((k) => byView[k] || "");
+    if (!inputs.some(Boolean)) return c.json({ ok: false, error: "imageUrls required" }, 400);
+    if (!inputs[0]) return c.json({ ok: false, error: "front view is required by Tripo" }, 400);
     endpoint = "/v3/generation/multiview-to-model";
     payload.inputs = inputs;
   }
